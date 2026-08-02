@@ -1,0 +1,149 @@
+{
+  "app_name": "DailyHub AI",
+  "personality": "2 Material You / Expressive DARK",
+  "personality_one_liner": "A deeply tonal, adaptive, and premium productivity hub where rich mossy surfaces and expressive typography create a calming, focused environment.",
+  "color": {
+    "surface": "#111412",
+    "onSurface": "#E2E6E3",
+    "surfaceSecondary": "#1B221E",
+    "onSurfaceSecondary": "#C4C8C5",
+    "surfaceTertiary": "#252D28",
+    "onSurfaceTertiary": "#A0A5A1",
+    "surfaceInverse": "#E2E6E3",
+    "onSurfaceInverse": "#111412",
+    "brand": "#428C66",
+    "brandPrimary": "#5EBA8B",
+    "onBrandPrimary": "#003820",
+    "brandSecondary": "#2E4F3E",
+    "onBrandSecondary": "#AEE5C6",
+    "brandTertiary": "#1B3626",
+    "onBrandTertiary": "#8FCCA9",
+    "success": "#6DD58C",
+    "onSuccess": "#00391C",
+    "warning": "#F2B8B5",
+    "onWarning": "#410002",
+    "error": "#FFB4AB",
+    "onError": "#690005",
+    "info": "#A8C7FA",
+    "onInfo": "#062E6F",
+    "border": "#252D28",
+    "borderStrong": "#3A4740",
+    "divider": "#1E2722"
+  },
+  "typography": {
+    "displayFontFamily": "Outfit",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use adaptive tonal layering instead of hard shadows. Margins should be generous (lg/xl) to let content breathe. Elements within cards use md spacing.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Apply to bottom tab bar and sticky headers.",
+      "Use over the hero abstract background image.",
+      "Pair with a ≥75% opacity tinted base under the blur for readability."
+    ],
+    "dont's": [
+      "Do not apply to body text cards or dense list items.",
+      "Do not use transparent glass over high-contrast raw photos without a scrim."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "A personalized hub offering an immediate glance at daily insights, quick tools, and AI suggestions.",
+      "states": {
+        "loading": "Centered brand-colored spinner over surface.",
+        "empty": "N/A",
+        "error": "Card displaying 'Unable to load insights' with a retry button in brandSecondary."
+      },
+      "layout": "Compact top app bar with greeting and avatar. Below, a large Hero Card featuring the moss gradient background with a 3-stop vertical gradient scrim (transparent to surface). Inside the hero card: Daily insight text and a primary 'Start Focus' action. Below hero: A bento grid (flexWrap: 'wrap', gap: md) for 'Quick Actions' (Notes, AI Chat, etc.), each in a surfaceSecondary card with a brandTertiary tinted icon container. Followed by a horizontal scrolling list for 'Favorite Tools'."
+    },
+    {
+      "name": "All Tools",
+      "purpose": "A categorized directory of all productivity, AI, and utility tools.",
+      "states": {
+        "loading": "Skeleton bento grid.",
+        "empty": "Illustration of an empty desk with 'No tools found in this category' text.",
+        "error": "Text stating 'Error loading tools' + Retry CTA."
+      },
+      "layout": "Sticky header with a large Search bar (surfaceTertiary background, pill shape). Below search, a horizontal scrollable row of filter chips (Productivity, AI, Health). The main content is a 2-column grid of tool cards. Each card uses surfaceSecondary, lg radius, with the tool icon wrapped in a brandTertiary rounded square."
+    },
+    {
+      "name": "Habit Tracker",
+      "purpose": "Visualizes streaks and daily completions to build momentum.",
+      "states": {
+        "loading": "Skeleton streak counters.",
+        "empty": "Illustration of a seed/sprout with 'Start a new habit today' and a primary FAB.",
+        "error": "Error loading habits message."
+      },
+      "layout": "Top section features a 'Today' dashboard showing a giant streak number (DisplayFontFamily, 3xl+) and a 'Keep the momentum going' subtitle. Below, a calendar/heatmap grid showing weekly completion (colored dots/tiles using brandPrimary for completed). A prominent primary FAB pinned to the bottom right for logging a new habit."
+    },
+    {
+      "name": "Pomodoro Focus Timer",
+      "purpose": "A distraction-free, visually calming circular timer for focused work sessions.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Minimalist layout. A large circular timer ring in the center of the screen, with the remaining time in bold display typography inside. Above the timer: subtle pill-shaped mode controls (Pomodoro, Short Break, Long Break). Below the timer: A large, pill-shaped Play/Pause primary button. Background is solid surface to reduce distractions."
+    }
+  ],
+  "images": {
+    "dashboard_hero_bg": {
+      "url": "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract dark moss green gradient background"
+    },
+    "empty_desk_illustration": {
+      "url": "https://images.unsplash.com/photo-1629824019366-ffcb6b334634?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwZGVzayUyMHByb2R1Y3Rpdml0eSUyMG5vdGVzJTIwZmxhdGxheXxlbnwwfHx8fDE3ODU2NTgyMTB8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Minimalist desk setup with notes"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Implement a deep, tonal Material You (Dark-first) theme using the Moss/Emerald color tokens provided. Avoid harsh shadows; rely on surface color layering for elevation.",
+    "For the Dashboard Hero card, use the provided abstract moss background with a strict 3-stop vertical gradient scrim (transparent to surface) to ensure text readability.",
+    "Ensure the Pomodoro Timer uses a large, clean SVG-based circular progress ring, keeping the screen minimal and distraction-free as per research.",
+    "Habit Tracker must focus on the 'Streak' visualization prominently (giant numbers, calendar heatmap).",
+    "Use 'Outfit' for expressive, rounded display headings and 'Geist' for clean, readable body/UI text.",
+    "Keep standard padding large (16-24pt) to make the app feel premium and uncluttered, similar to top-tier productivity apps.",
+    "Ensure all primary actions (like 'Log Habit' or 'Start Focus') are easily accessible in the thumb zone (bottom 1/3 of the screen)."
+  ]
+}
