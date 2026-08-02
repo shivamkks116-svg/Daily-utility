@@ -134,6 +134,39 @@ class ChatIn(BaseModel):
     message: str
 
 
+# --- Expense/Income Tracker ---
+class ExpenseIn(BaseModel):
+    amount: float
+    kind: str = "expense"  # expense|income
+    category: str = "General"
+    note: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD; default today
+
+
+# --- Voice Notes ---
+class VoiceNoteIn(BaseModel):
+    title: str = ""
+    duration_ms: int = 0
+    audio_base64: str  # data URL or raw base64
+    mime_type: str = "audio/m4a"
+
+
+# --- QR Scan History ---
+class QRScanIn(BaseModel):
+    value: str
+    type: str = "unknown"  # qr|barcode|url|text|wifi|contact
+
+
+# --- Reminders (Water / Medicine) ---
+class ReminderIn(BaseModel):
+    kind: str = "water"  # water|medicine|custom
+    title: str
+    times: List[str] = []  # ["08:00","12:00","20:00"]
+    enabled: bool = True
+    dose: Optional[str] = None  # for medicine
+    icon: Optional[str] = None
+
+
 # ---------------------- Health ----------------------
 @api_router.get("/")
 async def root():
@@ -561,6 +594,247 @@ async def ai_study(payload: AIRequestIn, authorization: Optional[str] = Header(d
     return {"result": out}
 
 
+# ---------------------- Expenses ----------------------
+@api_router.get("/expenses")
+async def list_expenses(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    cur = db.expenses.find({"user_id": user["user_id"]}, {"_id": 0}).sort("date", -1)
+    items = [clean(x) for x in await cur.to_list(2000)]
+    # Aggregate month totals
+    month = utcnow().strftime("%Y-%m")
+    inc = 0.0
+    exp = 0.0
+    for it in items:
+        d = it.get("date") or ""
+        if isinstance(d, str) and d.startswith(month):
+            if it.get("kind") == "income":
+                inc += float(it.get("amount", 0))
+            else:
+                exp += float(it.get("amount", 0))
+    return {
+        "items": items,
+        "month": month,
+        "month_income": round(inc, 2),
+        "month_expense": round(exp, 2),
+        "month_balance": round(inc - exp, 2),
+    }
+
+
+@api_router.post("/expenses")
+async def create_expense(payload: ExpenseIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    now = utcnow()
+    doc = {
+        "id": new_id("exp"),
+        "user_id": user["user_id"],
+        "amount": float(payload.amount),
+        "kind": payload.kind if payload.kind in ("expense", "income") else "expense",
+        "category": payload.category or "General",
+        "note": payload.note or "",
+        "date": payload.date or now.strftime("%Y-%m-%d"),
+        "created_at": now,
+    }
+    await db.expenses.insert_one({**doc})
+    return clean(doc)
+
+
+@api_router.delete("/expenses/{expense_id}")
+async def delete_expense(expense_id: str, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.expenses.delete_one({"id": expense_id, "user_id": user["user_id"]})
+    return {"ok": True}
+
+
+# ---------------------- Voice Notes ----------------------
+@api_router.get("/voice-notes")
+async def list_voice_notes(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    cur = db.voice_notes.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0, "audio_base64": 0},  # exclude payload from list
+    ).sort("created_at", -1)
+    items = [clean(x) for x in await cur.to_list(500)]
+    return {"items": items}
+
+
+@api_router.get("/voice-notes/{voice_id}")
+async def get_voice_note(voice_id: str, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    doc = await db.voice_notes.find_one({"id": voice_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    return clean(doc)
+
+
+@api_router.post("/voice-notes")
+async def create_voice_note(payload: VoiceNoteIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    if not payload.audio_base64:
+        raise HTTPException(400, "audio_base64 required")
+    now = utcnow()
+    doc = {
+        "id": new_id("voice"),
+        "user_id": user["user_id"],
+        "title": payload.title or now.strftime("Voice %b %d %H:%M"),
+        "duration_ms": int(payload.duration_ms),
+        "audio_base64": payload.audio_base64,
+        "mime_type": payload.mime_type or "audio/m4a",
+        "created_at": now,
+    }
+    await db.voice_notes.insert_one({**doc})
+    # Return without the payload
+    return clean({k: v for k, v in doc.items() if k != "audio_base64"})
+
+
+@api_router.delete("/voice-notes/{voice_id}")
+async def delete_voice_note(voice_id: str, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.voice_notes.delete_one({"id": voice_id, "user_id": user["user_id"]})
+    return {"ok": True}
+
+
+# ---------------------- QR Scan History ----------------------
+@api_router.get("/qr-scans")
+async def list_qr_scans(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    cur = db.qr_scans.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).limit(200)
+    items = [clean(x) for x in await cur.to_list(200)]
+    return {"items": items}
+
+
+@api_router.post("/qr-scans")
+async def create_qr_scan(payload: QRScanIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    now = utcnow()
+    doc = {
+        "id": new_id("qr"),
+        "user_id": user["user_id"],
+        "value": payload.value,
+        "type": payload.type or "unknown",
+        "created_at": now,
+    }
+    await db.qr_scans.insert_one({**doc})
+    return clean(doc)
+
+
+@api_router.delete("/qr-scans/{scan_id}")
+async def delete_qr_scan(scan_id: str, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.qr_scans.delete_one({"id": scan_id, "user_id": user["user_id"]})
+    return {"ok": True}
+
+
+# ---------------------- Reminders (Water / Medicine) ----------------------
+@api_router.get("/reminders")
+async def list_reminders(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    cur = db.reminders.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", 1)
+    items = [clean(x) for x in await cur.to_list(200)]
+    return {"items": items}
+
+
+@api_router.post("/reminders")
+async def create_reminder(payload: ReminderIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    now = utcnow()
+    doc = {
+        "id": new_id("rmd"),
+        "user_id": user["user_id"],
+        **payload.dict(),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.reminders.insert_one({**doc})
+    return clean(doc)
+
+
+@api_router.put("/reminders/{rid}")
+async def update_reminder(rid: str, payload: ReminderIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    upd = payload.dict()
+    upd["updated_at"] = utcnow()
+    r = await db.reminders.update_one({"id": rid, "user_id": user["user_id"]}, {"$set": upd})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    doc = await db.reminders.find_one({"id": rid}, {"_id": 0})
+    return clean(doc)
+
+
+@api_router.delete("/reminders/{rid}")
+async def delete_reminder(rid: str, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.reminders.delete_one({"id": rid, "user_id": user["user_id"]})
+    return {"ok": True}
+
+
+# ---------------------- Premium (MOCKED billing) ----------------------
+@api_router.get("/premium/status")
+async def premium_status(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    doc = await db.premium.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        return {"premium": False, "plan": None, "activated_at": None}
+    return {
+        "premium": bool(doc.get("premium")),
+        "plan": doc.get("plan"),
+        "activated_at": doc.get("activated_at").isoformat() if isinstance(doc.get("activated_at"), datetime) else doc.get("activated_at"),
+    }
+
+
+class PremiumMockIn(BaseModel):
+    plan: str = "monthly"  # monthly|yearly|lifetime
+
+
+@api_router.post("/premium/mock-purchase")
+async def premium_mock_purchase(payload: PremiumMockIn, authorization: Optional[str] = Header(default=None)):
+    """MOCKED endpoint. Real Play Billing v8 requires a native dev build.
+    This activates premium locally for UX testing. In production, replace with server-side
+    receipt verification from Google Play Developer API."""
+    user = await require_user(authorization)
+    now = utcnow()
+    await db.premium.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "user_id": user["user_id"],
+            "premium": True,
+            "plan": payload.plan,
+            "activated_at": now,
+            "source": "mock",
+        }},
+        upsert=True,
+    )
+    return {"premium": True, "plan": payload.plan, "activated_at": now.isoformat(), "mocked": True}
+
+
+@api_router.post("/premium/cancel")
+async def premium_cancel(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.premium.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"premium": False, "cancelled_at": utcnow()}},
+    )
+    return {"premium": False}
+
+
+# ---------------------- Currency Rates (public API proxy) ----------------------
+@api_router.get("/currency/rates")
+async def currency_rates(base: str = "USD", authorization: Optional[str] = Header(default=None)):
+    await require_user(authorization)
+    base = base.upper()
+    try:
+        async with httpx.AsyncClient(timeout=10) as h:
+            r = await h.get(f"https://api.frankfurter.dev/v1/latest?base={base}")
+        if r.status_code != 200:
+            raise HTTPException(502, "Rate service error")
+        data = r.json()
+        return {"base": data.get("base", base), "date": data.get("date"), "rates": data.get("rates", {})}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("currency error")
+        raise HTTPException(502, "Rate service unavailable")
+
+
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 
@@ -587,6 +861,11 @@ async def on_startup():
         await db.habit_logs.create_index([("user_id", 1), ("habit_id", 1), ("date", 1)])
         await db.focus_sessions.create_index([("user_id", 1), ("created_at", -1)])
         await db.ai_messages.create_index([("user_id", 1), ("session_id", 1), ("created_at", 1)])
+        await db.expenses.create_index([("user_id", 1), ("date", -1)])
+        await db.voice_notes.create_index([("user_id", 1), ("created_at", -1)])
+        await db.qr_scans.create_index([("user_id", 1), ("created_at", -1)])
+        await db.reminders.create_index([("user_id", 1), ("created_at", 1)])
+        await db.premium.create_index("user_id", unique=True)
         logger.info("Indexes ensured.")
     except Exception:
         logger.exception("Index creation issue")

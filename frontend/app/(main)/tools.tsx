@@ -27,6 +27,7 @@ const TOOLS: Tool[] = [
   { key: "todos",    label: "To-Do",        icon: "checkbox",      category: "Productivity", route: "/todos" },
   { key: "habits",   label: "Habits",       icon: "leaf",          category: "Productivity", route: "/habits" },
   { key: "focus",    label: "Focus Timer",  icon: "timer",         category: "Productivity", route: "/focus" },
+  { key: "voice",    label: "Voice Notes",  icon: "mic",           category: "Productivity", route: "/voice" },
   { key: "planner",  label: "Daily Planner",icon: "calendar",      category: "Productivity", soon: true },
   { key: "mood",     label: "Mood Tracker", icon: "happy",         category: "Productivity", soon: true },
   { key: "journal",  label: "Journal",      icon: "book",          category: "Productivity", soon: true },
@@ -43,28 +44,28 @@ const TOOLS: Tool[] = [
   { key: "resume",     label: "Resume Builder",icon: "briefcase",           category: "AI", soon: true },
 
   // Finance
-  { key: "expense", label: "Expense Tracker",icon: "wallet",         category: "Finance", soon: true },
+  { key: "expense", label: "Expense Tracker",icon: "wallet",         category: "Finance", route: "/expenses" },
+  { key: "emi",     label: "EMI Calculator", icon: "calculator",     category: "Finance", route: "/calc/emi" },
+  { key: "sip",     label: "SIP Calculator", icon: "trending-up",    category: "Finance", route: "/calc/sip" },
+  { key: "currency",label: "Currency Convert",icon:"cash",           category: "Finance", route: "/calc/currency" },
   { key: "budget",  label: "Budget Planner", icon: "bar-chart",      category: "Finance", soon: true },
-  { key: "emi",     label: "EMI Calculator", icon: "calculator",     category: "Finance", soon: true },
-  { key: "sip",     label: "SIP Calculator", icon: "trending-up",    category: "Finance", soon: true },
-  { key: "currency",label: "Currency Convert",icon:"cash",           category: "Finance", soon: true },
 
   // Health
-  { key: "water", label: "Water Reminder",  icon: "water",   category: "Health", soon: true },
-  { key: "medicine", label: "Medicine Reminder", icon: "medkit", category: "Health", soon: true },
+  { key: "water", label: "Water Reminder",  icon: "water",   category: "Health", route: "/reminders?kind=water" },
+  { key: "medicine", label: "Medicine Reminder", icon: "medkit", category: "Health", route: "/reminders?kind=medicine" },
   { key: "sleep", label: "Sleep Tracker",   icon: "moon",    category: "Health", soon: true },
   { key: "bmi",   label: "BMI Calculator",  icon: "fitness", category: "Health", soon: true },
 
   // Device
-  { key: "qr",       label: "QR Scanner",   icon: "qr-code",     category: "Device", soon: true },
+  { key: "qr",       label: "QR Scanner",   icon: "qr-code",     category: "Device", route: "/qr" },
+  { key: "calc",     label: "Scientific Calc",icon: "calculator", category: "Device", route: "/calc/scientific" },
+  { key: "unit",     label: "Unit Converter",icon: "swap-horizontal", category: "Device", route: "/calc/unit" },
   { key: "flash",    label: "Flashlight",   icon: "flashlight",  category: "Device", soon: true },
   { key: "compass",  label: "Compass",      icon: "compass",     category: "Device", soon: true },
-  { key: "calc",     label: "Calculator",   icon: "calculator", category: "Device",  soon: true },
-  { key: "unit",     label: "Unit Converter",icon: "swap-horizontal", category: "Device", soon: true },
   { key: "device",   label: "Device Info",  icon: "phone-portrait", category: "Device", soon: true },
 
   // Files
-  { key: "pdf",     label: "PDF Tools",       icon: "document-attach", category: "Files", soon: true },
+  { key: "pdf",     label: "Image → PDF",     icon: "document-attach", category: "Files", route: "/pdf" },
   { key: "zip",     label: "ZIP Extractor",   icon: "archive",         category: "Files", soon: true },
   { key: "imgconv", label: "Image Converter", icon: "image",           category: "Files", soon: true },
   { key: "vault",   label: "Secure Vault",    icon: "lock-closed",     category: "Files", soon: true },

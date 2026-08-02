@@ -1,0 +1,37 @@
+{
+  "summary": "DailyHub AI v2 backend endpoints tested via public EXPO_PUBLIC_BACKEND_URL. All 19 new pytest cases passed (100%). Covered: (1) Regression smoke (root/notes/todos still working), (2) Expenses CRUD + month aggregation with base+delta assertions and old-date exclusion, (3) Voice Notes payload exclusion (POST response, LIST) vs inclusion on GET/{id} + 404 on missing + 422 on missing audio, (4) QR scans desc ordering + user isolation, (5) Reminders CRUD with enabled toggle via PUT + 404 on unknown update, (6) Premium status default -> mock-purchase yearly -> upsert to monthly (no duplicate) -> cancel flow + isolation across users, (7) Currency proxy default USD + base switching to EUR (frankfurter.dev live). All new endpoints correctly enforce 401 without Bearer token. Recursive _id leakage scan clean on every new response. User isolation verified on expenses/voice-notes/qr-scans/reminders/premium.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/voice-notes", "issue": "When audio_base64 is an empty string, Pydantic accepts it and endpoint returns 400 via manual check — inconsistent with other fields which raise 422. Not blocking, just style."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dailyhub_v2_backend.py",
+    "/app/test_reports/pytest/pytest_v2_results.xml",
+    "/app/backend/tests/test_dailyhub_backend.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~875 lines - exceeds the 700-line split threshold. Recommend splitting into routers: auth, notes/todos/habits/focus, ai, expenses, voice_notes, qr_scans, reminders, premium, currency. Otherwise maintenance risk increases.",
+    "PUT /api/reminders/{rid} accepts full ReminderIn body so partial updates (e.g. just toggling enabled) reset defaults — same PATCH-vs-PUT concern flagged for Notes/Todos in iteration_1.",
+    "POST /api/premium/cancel does not require the user to already have a premium doc — it silently no-ops via update_one (matched_count=0). Consider making it explicit (return premium=False regardless) OR return 404 if never purchased. Current behavior is fine, just noting.",
+    "GET /api/currency/rates hits frankfurter.dev on every call with no caching. Consider a 10-minute in-memory or Mongo TTL cache to reduce external calls and speed up UI.",
+    "Voice note base64 is stored inline in Mongo — for real recordings (multi-MB), documents will hit the 16MB BSON limit. For MVP OK; production should use GridFS or object storage."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dailyhub_v2_backend.py (new)"
+  ],
+  "success_rate": {"backend": "100% (19/19 new + 24/24 previous)", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "Guest users TEST_V2_UserA / TEST_V2_UserB / TEST_V2_PremUser created for isolation and premium tests. All created expenses/voice-notes/qr-scans/reminders were cleaned up within their test blocks; premium was cancelled after use.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For v2 endpoints use /app/backend/tests/test_dailyhub_v2_backend.py; for prior endpoints use /app/backend/tests/test_dailyhub_backend.py. Base URL comes from /app/frontend/.env EXPO_PUBLIC_BACKEND_URL. Currency tests will pytest.skip on 502 if frankfurter.dev is down (treated as env issue per request). Premium /mock-purchase is INTENTIONALLY MOCKED — real Play Billing v8 receipt verification is not implemented (main agent's design decision). Guest tokens are the primary auth source; no Google/Emergent login needed.",
+  "rca_of_issue": "No issues found — all 19 v2 endpoint tests passed on first run."
+}

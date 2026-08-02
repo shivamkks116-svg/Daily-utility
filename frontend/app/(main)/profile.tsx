@@ -73,7 +73,7 @@ export default function ProfileScreen() {
           </View>
           <Pressable
             testID="premium-upgrade-btn"
-            onPress={() => showToast("Premium: coming soon — you’ll be the first to know.")}
+            onPress={() => router.push("/premium")}
             style={styles.premiumBtn}
           >
             <Text style={styles.premiumBtnText}>Upgrade</Text>
