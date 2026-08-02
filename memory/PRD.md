@@ -1,66 +1,60 @@
-# DailyHub AI — Product Requirements (MVP v1)
+# DailyHub AI — Product Requirements (v2)
 
 ## Overview
-DailyHub AI is a premium Expo React Native mobile app developed by Shivam Innovation. It combines productivity, AI, and daily-life utilities in a single beautiful application, optimized for Android and iOS with a Material You-inspired dark palette (Moss/Emerald).
+DailyHub AI is a premium Expo React Native mobile app by Shivam Innovation. Combines productivity, AI, finance, health, device utilities, and file tools in one Material You-inspired app.
 
-## MVP Scope
-### Authentication
-- Emergent-managed Google Sign-In (production-ready OAuth via `auth.emergentagent.com`).
-- Guest login (30-day session).
-- Session token stored in `expo-secure-store` (mobile) / `localStorage` (web).
+## v2 Scope (extends v1)
 
-### Dashboard (Home tab)
-- Personalized greeting (morning/afternoon/evening) and date.
-- Hero card with abstract moss-gradient background + daily insight + Start Focus CTA.
-- Quick actions grid: Notes, To-Do, Habits, Focus, AI Chat, Translate.
-- Today stats row (Focused minutes, Tasks, Streak).
-- "Coming soon" chips previewing future categories.
+### v1 features (still present)
+- Emergent Google Auth + Guest login
+- Dashboard, Notes, To-Do, Habits, Focus/Pomodoro, AI Chat, AI Tools (Translator/Grammar/Summarizer/Email/Study)
+- Profile with Premium upsell card, All Tools tab with category chips
 
-### Productivity Features
-- **Notes**: List + rich text editor with auto-save (800ms debounce), pin, delete.
-- **To-Do**: List + priority (low/normal/high), bottom-sheet modal for new task, toggle, delete.
-- **Habits**: Streak counter, 14-day heatmap tap-to-log, emoji icon picker.
-- **Focus/Pomodoro**: 25/5/15 minute modes, circular ring, start/pause/reset, session logging + daily total.
+### v2 features (NEW)
+**Finance**
+- **Expense Tracker**: income & expenses, categories, monthly income/expense/balance summary card, add/delete entries via bottom-sheet.
+- **EMI Calculator**: monthly EMI, total payable, total interest.
+- **SIP Calculator**: future value, invested amount, gains.
+- **Currency Converter**: live rates (frankfurter.dev proxy via `/api/currency/rates`), 10 major currencies.
 
-### AI Tools (Gemini 3 Flash via Emergent LLM Key)
-- **AI Chat**: Persistent multi-turn conversation with starter prompts and history.
-- **Translator**: Multi-language target selection.
-- **Grammar Fixer**: Rewrite for grammar and clarity.
-- **Summarizer**: Bulleted summaries.
-- **Email Writer**: Subject-line-first drafts from intent.
-- **Study Assistant**: Structured explanations with self-check.
+**Health**
+- **Water Reminder** + **Medicine Reminder**: schedules with times array, per-time daily notifications via `expo-notifications`, toggle enable/disable, dose field for meds.
 
-### All Tools tab
-- Category filter chips (Productivity, AI, Finance, Health, Device, Files).
-- Search input across all tools.
-- Grid of tool cards with "Soon" badges for future scope (Finance, Health, Device utilities, File tools).
+**Productivity**
+- **Voice Notes**: record via `expo-audio`, save base64 to backend (exclude from list, include on GET/{id}), play/pause, delete.
 
-### Profile tab
-- User card (avatar, name, email, provider badge).
-- Premium upgrade upsell card.
-- Preferences, Privacy, About sections.
-- Sign out.
+**Device**
+- **QR Scanner**: `expo-camera` with permission gate → settings redirect, type detection (URL/wifi/contact/email/phone/text), scan history persisted server-side.
+- **Scientific Calculator**: full sci-calc with sin/cos/tan/log/ln/√/π/x²/parens/negation, live expression evaluation.
+- **Unit Converter**: Length, Weight, Temperature, Time, Data — all with base conversions.
 
-## Backend (FastAPI + MongoDB)
-- Base: `/api`
-- Auth: `POST /api/auth/session`, `POST /api/auth/guest`, `GET /api/auth/me`, `POST /api/auth/logout`.
-- Notes: `GET/POST /api/notes`, `PUT/DELETE /api/notes/{id}`.
-- Todos: `GET/POST /api/todos`, `PUT/DELETE /api/todos/{id}`.
-- Habits: `GET/POST /api/habits`, `POST /api/habits/{id}/log`, `DELETE /api/habits/{id}`.
-- Focus: `GET/POST /api/focus`.
-- AI: `POST /api/ai/chat` (persistent), `/api/ai/translate`, `/api/ai/email-writer`, `/api/ai/grammar`, `/api/ai/summarize`, `/api/ai/study`, `GET /api/ai/history/{session_id}`.
+**Files**
+- **Image → PDF**: multi-image picker (expo-image-picker), reorder, remove, generate PDF (expo-print), share (expo-sharing).
 
-MongoDB indexes for users, sessions (TTL), notes, todos, habits, habit_logs, focus_sessions, ai_messages.
+**Monetization**
+- **Premium screen**: 3 plans (monthly / yearly / lifetime), features grid, mocked purchase, upsert entitlement, cancel.
+- MOCKED: `POST /api/premium/mock-purchase` — real Play Billing v8 receipt verification requires native Android build and Google Play Developer API integration.
+
+## Backend additions
+- `/api/expenses` (GET/POST/DELETE)
+- `/api/voice-notes` (GET list w/o payload, GET/{id} full, POST, DELETE)
+- `/api/qr-scans` (GET/POST/DELETE)
+- `/api/reminders` (GET/POST/PUT/DELETE)
+- `/api/premium/status`, `/api/premium/mock-purchase`, `/api/premium/cancel`
+- `/api/currency/rates?base=USD` — proxy to frankfurter.dev
+
+Indexes added; auth guards; user isolation; no `_id` leakage.
 
 ## Design
-- Material You Expressive Dark palette (moss/emerald). See `/app/design_guidelines.json`.
-- Bottom tab bar with glassmorphism (iOS blur, Android solid).
-- SafeArea aware, keyboard-controller for text inputs, expo-linear-gradient for hero.
-- Ionicons for all iconography.
+- Same Material You Expressive Dark palette (moss/emerald).
+- Permission gates for camera/mic follow contract (deny → request; permanent deny → open settings).
+- All bottom-sheet modals mounted at top-level via `Modal`, keyboard-controller for input focus, no `Alert` — inline toasts / bottom sheets.
 
-## Future scope (placeholders visible in Tools screen)
-- Finance: Expense/Income Tracker, Budget, EMI/SIP/GST/Currency calculators.
-- Health: Water/Medicine reminders, Sleep, BMI, Weight log.
-- Device: QR/Barcode, Flashlight, Compass, Calculator, Unit Converter, Device Info.
-- Files: PDF tools, ZIP, Image converter, Secure Vault.
-- Voice notes, Journal, Mood tracker.
+## Explicit non-goals (v2)
+- **Home-screen widgets**: Requires native dev build + widget provider modules; documented as post-deploy feature.
+- **Real Play Billing v8**: Requires native module; UI + entitlement server ready.
+- **Expo Go limits**: Voice notes recording requires microphone permission (works on device/dev build). Local notifications work but scheduling accuracy varies on Android SDK 53+ in Expo Go.
+
+## Testing
+- v1: 24/24 backend tests pass (`/app/backend/tests/test_dailyhub_backend.py`).
+- v2: 19/19 backend tests pass (`/app/backend/tests/test_dailyhub_v2_backend.py`).
