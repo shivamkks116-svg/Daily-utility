@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.dailyutilityai.ubbge5",
+      "bundleIdentifier": "com.dailyutility.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan QR codes and barcodes",
         "NSMicrophoneUsageDescription": "Record voice notes",
@@ -23,7 +23,7 @@
         "backgroundColor": "#111412"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.dailyutilityai.ubbge5",
+      "package": "com.dailyutility.app",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
