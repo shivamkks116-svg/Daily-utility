@@ -608,7 +608,12 @@ function ToggleRow({
   testID: string;
 }) {
   return (
-    <View style={styles.row} testID={testID}>
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      android_ripple={{ color: colors.borderStrong }}
+      style={styles.row}
+      testID={testID}
+    >
       <Ionicons name={icon} size={18} color={colors.onSurfaceSecondary} />
       <Text style={styles.rowLabel}>{label}</Text>
       <Switch
@@ -617,7 +622,7 @@ function ToggleRow({
         trackColor={{ false: colors.borderStrong, true: colors.brandPrimary }}
         thumbColor={value ? colors.onBrandPrimary : colors.onSurfaceTertiary}
       />
-    </View>
+    </Pressable>
   );
 }
 

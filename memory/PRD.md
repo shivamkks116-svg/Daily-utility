@@ -69,3 +69,81 @@ Indexes added; auth guards; user isolation; no `_id` leakage.
 - Haptics helper: `/app/frontend/src/utils/haptics.ts` (light tap, success, warning).
 - Package name updated to `com.dailyutility.app` in `app.json` (both iOS bundleIdentifier + Android package).
 - App icons, splash, feature graphic, Play Store screenshots (24 files, phone + 7"/10" tablets), brand kit generated in `/app/branding/`.
+
+## v4 Play Store Release Prep (this iteration)
+
+### Monetization — AdMob (Google Mobile Ads)
+- Library: `react-native-google-mobile-ads` (installed via `expo install`).
+- App IDs registered in `app.json` config plugin (currently Google test App IDs; replace with real IDs before Play Store submission — see `/app/frontend/src/ads/ids.ts` `PRODUCTION_ADS` flag).
+- SDK initialized once on app start in `_layout.tsx` via `initAdsOnce()` (native only).
+- Web fallback: `.web.ts` files export no-op stubs so bundler never loads the native module on web.
+
+### Ad Placements
+- **Banner Ads**: Home tab + Tools tab (bottom of scroll content, above tab bar). Uses `ANCHORED_ADAPTIVE_BANNER`.
+- **Interstitial Ads**: shown every 3rd tool launch (excluding Notes and AI Chat), and after PDF-close back navigation. Min 45s gap between interstitials.
+- **Rewarded Ads**: shown only inside AI Limit Dialog when user opts to earn +5 more AI requests.
+
+### AI Free Tier — Rate Limit (5/day)
+- New Mongo collection: `ai_quota`. Doc shape: `{ user_id, date: "YYYY-MM-DD", used, bonus }`.
+- Enforced on every `/api/ai/*` endpoint via `_check_and_increment_quota`. Returns HTTP 429 with structured detail when exhausted.
+- Rewarded ad flow: client watches ad → POST `/api/ai/reward` → server grants `+5` bonus (max 15/day = 3 ads).
+- New endpoints:
+  - `GET /api/ai/quota` → current usage snapshot.
+  - `POST /api/ai/reward` → grant bonus after rewarded ad view.
+
+### Premium — Converted to "Coming Soon"
+- `/app/frontend/app/premium/index.tsx` fully rewritten as a "Coming Soon" landing page.
+- Beautiful hero with "Coming Soon" badge + diamond icon.
+- 6 feature preview cards preserved.
+- Purchase button disabled with `Coming Soon` label + subtitle "Premium Membership will be available in a future update."
+- No purchase API call is triggered.
+
+### Profile Enhancements (fully functional)
+- Theme picker (Dark / Light / System) — persisted via AsyncStorage.
+- Language picker (English / हिन्दी) — persisted.
+- Notifications toggle — persisted.
+- App Lock toggle — opens PIN setup (4–6 digits) → Confirm PIN → optional biometric enrollment via `expo-local-authentication`.
+- Storage Usage — real byte calculation across AsyncStorage keys.
+- Rate DailyHub AI → opens Play Store (`market://` scheme with web fallback).
+- Share App → native Share sheet with Play Store link.
+- Send Feedback / Contact Support → open mailto: with correct subject.
+- Help Center → opens `https://shivaminnovation.dev/help`.
+- Privacy Policy → in-app screen at `/app/legal/privacy.tsx`.
+- Terms & Conditions → in-app screen at `/app/legal/terms.tsx`.
+- Developer → opens shivaminnovation.dev.
+- Sign Out → clears session and redirects to /login.
+
+### App Lock
+- SecureStore-backed PIN (djb2-hashed) + biometric fallback via `expo-local-authentication`.
+- `AppLockGate` component wraps the root Stack; auto-locks 15s+ after backgrounding.
+- Auto-prompts biometric on unlock screen if enrolled; PIN pad shown otherwise; wrong PIN triggers vibration + reset.
+- Android permissions added: `USE_BIOMETRIC`, `USE_FINGERPRINT`. iOS `NSFaceIDUsageDescription` added.
+
+### Client resilience
+- `/app/frontend/src/api/client.ts` gained self-healing 401 retry: on any authenticated 401, bootstrap a fresh guest session and retry the original request once. Also preserves structured `detail` + `status` on thrown errors so quota_exceeded detection works.
+- Hardcoded PROD_BACKEND_URL fallback so shipped APKs work even if local `.env` is missing during Windows builds.
+
+### Testing (v4)
+- Backend: iteration_6.json — 6/6 quota tests PASS (`/app/backend/tests/test_ai_quota.py`).
+- Frontend: iteration_7.json — 22/22 UI assertions PASS (Premium, AI Limit Dialog, Profile settings, Home/Tools).
+
+### Release Checklist (v1.0)
+- ✅ No crashes reported in test runs
+- ✅ Stable navigation (all routes exercised)
+- ✅ Responsive UI (390×844 phone tested)
+- ✅ Android 8–16 support (via Expo SDK 53 default)
+- ✅ Proper permissions declared in app.json
+- ✅ Privacy Policy page
+- ✅ Terms & Conditions page
+- ✅ About / Developer info
+- ✅ Feedback + Contact Support (mailto)
+- ✅ Rate App (Play Store deep link)
+- ✅ Share App (native share sheet)
+- ✅ App Version (1.0.0)
+- ✅ Coming Soon Premium messaging
+- 🔲 Before submission: flip `PRODUCTION_ADS = true` in `/app/frontend/src/ads/ids.ts` and paste real AdMob unit IDs.
+
+### Explicit non-goals (v4)
+- Real Play Billing v8 (v5 feature).
+- Push Notifications via FCM (requires user's google-services.json — v5 feature).
+- Home-screen widgets (v6).
