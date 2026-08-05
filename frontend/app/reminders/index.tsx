@@ -4,7 +4,7 @@ import {
   TextInput, Modal, Switch, Platform, Linking,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardStickyView } from "react-native-keyboard-controller";
+import { KeyboardStickyView } from "@/src/utils/keyboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";

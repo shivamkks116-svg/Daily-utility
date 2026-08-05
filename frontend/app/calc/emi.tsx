@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView } from "@/src/utils/keyboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
