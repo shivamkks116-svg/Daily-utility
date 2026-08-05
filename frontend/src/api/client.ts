@@ -1,6 +1,11 @@
 import { storage } from "@/src/utils/storage";
 
-const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+// Production backend URL (hardcoded fallback so shipped APKs always work,
+// even if .env is missing during local Windows builds). In dev, EXPO_PUBLIC_BACKEND_URL
+// from .env will override this.
+const PROD_BACKEND_URL = "https://daily-utility-ai.emergent.host";
+const ENV_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND = (ENV_BACKEND && ENV_BACKEND.trim().length > 0 ? ENV_BACKEND : PROD_BACKEND_URL) as string;
 export const API_BASE = `${BACKEND}/api`;
 export const AUTH_TOKEN_KEY = "dailyhub_session_token";
 
