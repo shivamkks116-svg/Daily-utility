@@ -1,4 +1,4 @@
-# DailyHub AI — Product Requirements (v2)
+# DailyHub AI — Product Requirements (v3 UI Polish)
 
 ## Overview
 DailyHub AI is a premium Expo React Native mobile app by Shivam Innovation. Combines productivity, AI, finance, health, device utilities, and file tools in one Material You-inspired app.
@@ -58,3 +58,14 @@ Indexes added; auth guards; user isolation; no `_id` leakage.
 ## Testing
 - v1: 24/24 backend tests pass (`/app/backend/tests/test_dailyhub_backend.py`).
 - v2: 19/19 backend tests pass (`/app/backend/tests/test_dailyhub_v2_backend.py`).
+- v2.1 (keyboard-controller refactor): 4/4 backend smoke + 12/12 frontend keyboard flows pass.
+- v3 (UI polish): Home 10/10 + AI Chat 5/5 + Profile 18/18 + Regression 21/21 = 54/54 checks pass.
+
+## v3 UI Polish (this iteration)
+- Windows MAX_PATH permanent fix: removed `react-native-keyboard-controller`, added shim at `/app/frontend/src/utils/keyboard.tsx`.
+- New Home: motivational quote card, Today's Progress card (overall % + streak + 3 bars), Continue Working section, Recently Used chips (persisted in local storage), 6-tile Quick Actions grid, pull-to-refresh.
+- AI Chat: animated typing indicator (3 dots), Copy button on assistant messages, Regenerate button on last assistant message, `expo-haptics` on send/success.
+- Profile: expanded with Preferences (App Lock), Sync & Storage (Backup Status, Storage Usage, Restore Purchases), Community (Rate, Share, Feedback, Help, Contact Support). Toast-based interactions.
+- Haptics helper: `/app/frontend/src/utils/haptics.ts` (light tap, success, warning).
+- Package name updated to `com.dailyutility.app` in `app.json` (both iOS bundleIdentifier + Android package).
+- App icons, splash, feature graphic, Play Store screenshots (24 files, phone + 7"/10" tablets), brand kit generated in `/app/branding/`.
