@@ -33,6 +33,8 @@ import {
   getEstimatedStorageBytes,
   formatBytes,
 } from "@/src/utils/settings";
+import { clearPin, setPin, checkBiometrics } from "@/src/utils/appLock";
+import { skipNextLock } from "@/src/components/AppLockGate";
 
 const APP_PACKAGE = "com.dailyutility.app";
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
@@ -53,6 +55,11 @@ export default function ProfileScreen() {
 
   const [themeModal, setThemeModal] = useState(false);
   const [langModal, setLangModal] = useState(false);
+  const [pinModal, setPinModal] = useState<null | "set" | "confirm">(null);
+  const [pinBuf, setPinBuf] = useState("");
+  const [pinFirst, setPinFirst] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [bioAvailable, setBioAvailable] = useState(false);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -116,9 +123,112 @@ export default function ProfileScreen() {
   }
 
   async function toggleAppLock(v: boolean) {
-    setAppLockOn(v);
-    await setAppLock(v);
-    showToast(v ? "App Lock enabled" : "App Lock disabled");
+    if (v) {
+      // Enable: require PIN setup first
+      const bio = await checkBiometrics();
+      setBioAvailable(bio.available);
+      setPinFirst("");
+      setPinBuf("");
+      setPinError(null);
+      setPinModal("set");
+      return;
+    }
+    // Disable: confirm before removing PIN
+    Alert.alert(
+      "Turn off App Lock?",
+      "Your PIN will be removed and the app will no longer be protected.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Turn Off",
+          style: "destructive",
+          onPress: async () => {
+            setAppLockOn(false);
+            await setAppLock(false);
+            await clearPin();
+            showToast("App Lock disabled");
+          },
+        },
+      ],
+    );
+  }
+
+  async function finalizePinSetup(fullPin: string) {
+    const ok = await setPin(fullPin);
+    if (!ok) {
+      setPinError("Failed to save PIN. Try again.");
+      setPinBuf("");
+      return;
+    }
+    setAppLockOn(true);
+    await setAppLock(true);
+    skipNextLock(); // don't immediately lock the current session after enabling
+    setPinModal(null);
+    setPinBuf("");
+    setPinFirst("");
+    setPinError(null);
+
+    // If biometrics available, confirm to enable fingerprint/face unlock now.
+    if (bioAvailable) {
+      Alert.alert(
+        "Enable fingerprint unlock?",
+        "You can unlock DailyHub AI instantly using your fingerprint or face. Your PIN will still work as a backup.",
+        [
+          { text: "Skip", style: "cancel", onPress: () => showToast("App Lock enabled ✓ (PIN only)") },
+          {
+            text: "Enable",
+            onPress: async () => {
+              // Trigger a test prompt so the user experiences it once and
+              // any device-level enrollment permission dialogs get resolved.
+              const okBio = await import("@/src/utils/appLock").then((m) =>
+                m.biometricPrompt("Enable fingerprint unlock"),
+              );
+              if (okBio) showToast("Fingerprint unlock enabled ✓");
+              else showToast("App Lock enabled ✓ (PIN only)");
+            },
+          },
+        ],
+      );
+    } else {
+      showToast("App Lock enabled ✓");
+    }
+  }
+
+  async function pressPinDigit(d: string) {
+    if (!pinModal) return;
+    const next = (pinBuf + d).slice(0, 6);
+    setPinBuf(next);
+    setPinError(null);
+    if (next.length >= 4 && next.length <= 6 && pinModal === "set") {
+      // when 4 or 6 digits entered, wait a beat and move to confirm
+      if (next.length === 4 || next.length === 6) {
+        setTimeout(() => {
+          setPinFirst(next);
+          setPinBuf("");
+          setPinModal("confirm");
+        }, 200);
+      }
+    } else if (pinModal === "confirm" && next.length === pinFirst.length) {
+      // check match
+      if (next === pinFirst) {
+        await finalizePinSetup(next);
+      } else {
+        setPinError("PINs don't match. Try again.");
+        setTimeout(() => {
+          setPinBuf("");
+          setPinFirst("");
+          setPinModal("set");
+        }, 900);
+      }
+    }
+  }
+
+  function cancelPinSetup() {
+    setPinModal(null);
+    setPinBuf("");
+    setPinFirst("");
+    setPinError(null);
+    // Ensure toggle reflects reality: if we cancel mid-setup, don't turn on.
   }
 
   async function onShare() {
@@ -370,6 +480,82 @@ export default function ProfileScreen() {
         onSelect={(id) => chooseLanguage(id as LanguageCode)}
         onClose={() => setLangModal(false)}
       />
+
+      {/* PIN setup modal */}
+      <Modal transparent animationType="fade" visible={pinModal !== null} onRequestClose={cancelPinSetup}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.pinCard}>
+            <View style={styles.pinIcon}>
+              <Ionicons name="lock-closed" size={22} color={colors.onBrandPrimary} />
+            </View>
+            <Text style={styles.modalTitle}>
+              {pinModal === "confirm" ? "Confirm PIN" : "Set App Lock PIN"}
+            </Text>
+            <Text style={styles.pinHint}>
+              {pinModal === "confirm"
+                ? "Re-enter the same PIN to confirm"
+                : "Choose a 4–6 digit PIN. You'll need this to unlock the app."}
+            </Text>
+
+            <View style={styles.pinDotsRow}>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <View
+                  key={i}
+                  style={[styles.pinDot, i < pinBuf.length && styles.pinDotFilled]}
+                />
+              ))}
+            </View>
+
+            {pinError ? <Text style={styles.pinErr} testID="pin-error">{pinError}</Text> : null}
+            {bioAvailable && pinModal === "set" ? (
+              <Text style={styles.pinBioNote}>Biometric unlock will be enabled automatically.</Text>
+            ) : null}
+
+            <View style={styles.pinPad}>
+              {[
+                ["1", "2", "3"],
+                ["4", "5", "6"],
+                ["7", "8", "9"],
+                ["", "0", "⌫"],
+              ].map((row, ri) => (
+                <View key={ri} style={styles.pinPadRow}>
+                  {row.map((k, ci) => {
+                    if (!k) return <View key={ci} style={styles.pinKey} />;
+                    if (k === "⌫") {
+                      return (
+                        <Pressable
+                          key={ci}
+                          style={styles.pinKey}
+                          android_ripple={{ color: colors.borderStrong, borderless: true }}
+                          onPress={() => setPinBuf((b) => b.slice(0, -1))}
+                          testID="pin-backspace"
+                        >
+                          <Ionicons name="backspace-outline" size={22} color={colors.onSurface} />
+                        </Pressable>
+                      );
+                    }
+                    return (
+                      <Pressable
+                        key={ci}
+                        style={styles.pinKey}
+                        android_ripple={{ color: colors.borderStrong, borderless: true }}
+                        onPress={() => pressPinDigit(k)}
+                        testID={`pin-digit-${k}`}
+                      >
+                        <Text style={styles.pinKeyText}>{k}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+
+            <Pressable onPress={cancelPinSetup} style={styles.modalClose} testID="pin-cancel">
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -639,5 +825,79 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
     fontSize: fontSize.base,
     fontWeight: fontWeight.semibold,
+  },
+
+  // PIN setup modal
+  pinCard: {
+    width: "100%",
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: "center",
+  },
+  pinIcon: {
+    width: 48, height: 48, borderRadius: radius.md,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  pinHint: {
+    color: colors.onSurfaceSecondary,
+    fontSize: fontSize.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    textAlign: "center",
+  },
+  pinDotsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  pinDot: {
+    width: 12, height: 12, borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+  },
+  pinDotFilled: {
+    backgroundColor: colors.brandPrimary,
+    borderColor: colors.brandPrimary,
+  },
+  pinErr: {
+    color: colors.error,
+    fontSize: fontSize.sm,
+    marginBottom: spacing.sm,
+  },
+  pinBioNote: {
+    color: colors.onSurfaceTertiary,
+    fontSize: fontSize.xs,
+    marginBottom: spacing.sm,
+    textAlign: "center",
+  },
+  pinPad: {
+    width: "100%",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  pinPadRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  pinKey: {
+    flex: 1,
+    aspectRatio: 1.7,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pinKeyText: {
+    color: colors.onSurface,
+    fontSize: 22,
+    fontWeight: fontWeight.bold,
   },
 });

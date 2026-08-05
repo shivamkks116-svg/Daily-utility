@@ -8,6 +8,7 @@ import { KeyboardProvider } from "@/src/utils/keyboard";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/contexts/AuthContext";
+import { AppLockGate } from "@/src/components/AppLockGate";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -32,13 +33,15 @@ export default function RootLayout() {
           <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
           <AuthProvider>
             <View style={{ flex: 1, backgroundColor: colors.surface }}>
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.surface },
-                  animation: "slide_from_right",
-                }}
-              />
+              <AppLockGate>
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: colors.surface },
+                    animation: "slide_from_right",
+                  }}
+                />
+              </AppLockGate>
             </View>
           </AuthProvider>
         </SafeAreaProvider>

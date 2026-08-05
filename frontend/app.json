@@ -14,7 +14,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Scan QR codes and barcodes",
         "NSMicrophoneUsageDescription": "Record voice notes",
-        "NSPhotoLibraryUsageDescription": "Attach images to notes and PDFs"
+        "NSPhotoLibraryUsageDescription": "Attach images to notes and PDFs",
+        "NSFaceIDUsageDescription": "Unlock the app securely with Face ID"
       }
     },
     "android": {
@@ -31,7 +32,9 @@
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.USE_EXACT_ALARM"
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -52,6 +55,12 @@
       ],
       "expo-web-browser",
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock the app securely with Face ID"
+        }
+      ],
       [
         "expo-camera",
         {
