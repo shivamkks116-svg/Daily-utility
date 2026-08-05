@@ -17,6 +17,8 @@ import { useRouter } from "expo-router";
 import { api } from "@/src/api/client";
 import { tap, success } from "@/src/utils/haptics";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { AILimitDialog } from "@/src/components/AILimitDialog";
+import { isQuotaExceeded } from "@/src/utils/aiErrors";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at?: string };
 
@@ -35,6 +37,8 @@ export default function AIChatScreen() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [limitVisible, setLimitVisible] = useState(false);
+  const [pendingRetry, setPendingRetry] = useState<string | null>(null);
   const listRef = useRef<FlatList<Msg>>(null);
 
   useEffect(() => {
@@ -63,11 +67,19 @@ export default function AIChatScreen() {
       const assistantMsg: Msg = { id: `a-${Date.now()}`, role: "assistant", content: r.reply };
       setMessages((m) => [...m, assistantMsg]);
       success();
-    } catch (e: any) {
-      setMessages((m) => [
-        ...m,
-        { id: `err-${Date.now()}`, role: "assistant", content: `⚠️ ${e?.message || "AI error"}` },
-      ]);
+    } catch (e: unknown) {
+      if (isQuotaExceeded(e)) {
+        // Remove the optimistic user message so it doesn't look like it was sent.
+        setMessages((m) => m.filter((msg) => msg.id !== userMsg.id));
+        setPendingRetry(text);
+        setLimitVisible(true);
+      } else {
+        const errMsg = (e as { message?: string })?.message || "AI error";
+        setMessages((m) => [
+          ...m,
+          { id: `err-${Date.now()}`, role: "assistant", content: `⚠️ ${errMsg}` },
+        ]);
+      }
     } finally {
       setSending(false);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
@@ -210,6 +222,22 @@ export default function AIChatScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <AILimitDialog
+        visible={limitVisible}
+        onClose={() => {
+          setLimitVisible(false);
+          setPendingRetry(null);
+        }}
+        onGranted={() => {
+          const retry = pendingRetry;
+          setPendingRetry(null);
+          if (retry) {
+            // Fire and forget — send the same message again now that we have bonus.
+            send(retry);
+          }
+        }}
+      />
     </View>
   );
 }

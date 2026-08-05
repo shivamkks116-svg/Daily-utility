@@ -9,6 +9,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { maybeShowInterstitial } from "@/src/ads/interstitial";
 
 type ImgAsset = { uri: string; base64: string; width: number; height: number };
 
@@ -81,7 +82,7 @@ export default function PDFScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }} testID="pdf-screen">
       <SafeAreaView edges={["top"]} style={styles.header}>
-        <Pressable testID="pdf-back" onPress={() => router.back()} style={styles.iconBtn}>
+        <Pressable testID="pdf-back" onPress={() => { maybeShowInterstitial("pdf-close"); router.back(); }} style={styles.iconBtn}>
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.title}>Image → PDF</Text>

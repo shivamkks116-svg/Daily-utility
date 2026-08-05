@@ -452,6 +452,89 @@ async def create_focus(payload: FocusSessionIn, authorization: Optional[str] = H
 
 
 # ---------------------- AI (Gemini 3 Flash) ----------------------
+# Free tier: 5 AI requests / user / day. Users can watch a rewarded ad to earn
+# +5 bonus requests (up to a daily cap).
+FREE_AI_LIMIT_PER_DAY = 5
+REWARDED_AI_BONUS = 5
+MAX_BONUS_PER_DAY = 15  # cap: 3 rewarded ads worth of bonus per day
+
+def _today_key() -> str:
+    return utcnow().strftime("%Y-%m-%d")
+
+async def _get_quota_doc(user_id: str):
+    key = _today_key()
+    doc = await db.ai_quota.find_one({"user_id": user_id, "date": key}, {"_id": 0})
+    if not doc:
+        doc = {"user_id": user_id, "date": key, "used": 0, "bonus": 0}
+        await db.ai_quota.insert_one({**doc})
+    return doc
+
+async def _check_and_increment_quota(user_id: str):
+    """Raise 429 if quota exhausted; otherwise increment `used` and return doc."""
+    key = _today_key()
+    doc = await _get_quota_doc(user_id)
+    remaining = FREE_AI_LIMIT_PER_DAY + int(doc.get("bonus", 0)) - int(doc.get("used", 0))
+    if remaining <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "quota_exceeded",
+                "message": "You've reached today's free AI limit.",
+                "used": int(doc.get("used", 0)),
+                "limit": FREE_AI_LIMIT_PER_DAY,
+                "bonus": int(doc.get("bonus", 0)),
+                "reset_at": (utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat(),
+            },
+        )
+    await db.ai_quota.update_one(
+        {"user_id": user_id, "date": key},
+        {"$inc": {"used": 1}},
+        upsert=True,
+    )
+    return doc
+
+
+@api_router.get("/ai/quota")
+async def ai_quota(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    doc = await _get_quota_doc(user["user_id"])
+    used = int(doc.get("used", 0))
+    bonus = int(doc.get("bonus", 0))
+    total = FREE_AI_LIMIT_PER_DAY + bonus
+    remaining = max(0, total - used)
+    reset_at = (utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
+    return {
+        "used": used,
+        "bonus": bonus,
+        "free_limit": FREE_AI_LIMIT_PER_DAY,
+        "total": total,
+        "remaining": remaining,
+        "reset_at": reset_at,
+        "bonus_available": bonus < MAX_BONUS_PER_DAY,
+        "max_bonus": MAX_BONUS_PER_DAY,
+    }
+
+
+@api_router.post("/ai/reward")
+async def ai_reward(authorization: Optional[str] = Header(default=None)):
+    """Called by the client after a successful rewarded ad view. Grants +5 requests."""
+    user = await require_user(authorization)
+    key = _today_key()
+    doc = await _get_quota_doc(user["user_id"])
+    if int(doc.get("bonus", 0)) >= MAX_BONUS_PER_DAY:
+        raise HTTPException(status_code=400, detail="Daily bonus limit reached. Come back tomorrow.")
+    await db.ai_quota.update_one(
+        {"user_id": user["user_id"], "date": key},
+        {"$inc": {"bonus": REWARDED_AI_BONUS}},
+        upsert=True,
+    )
+    new_doc = await _get_quota_doc(user["user_id"])
+    used = int(new_doc.get("used", 0))
+    bonus = int(new_doc.get("bonus", 0))
+    total = FREE_AI_LIMIT_PER_DAY + bonus
+    return {"granted": REWARDED_AI_BONUS, "used": used, "bonus": bonus, "total": total, "remaining": max(0, total - used)}
+
+
 def _make_chat(session_id: str, system_message: str):
     from emergentintegrations.llm.chat import LlmChat
     return LlmChat(
@@ -475,6 +558,7 @@ async def _one_shot(system_message: str, user_text: str, session_key: str = "one
 @api_router.post("/ai/chat")
 async def ai_chat(payload: ChatIn, authorization: Optional[str] = Header(default=None)):
     user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     from emergentintegrations.llm.chat import UserMessage
     session_id = f"{user['user_id']}-{payload.session_id}"
     # Rebuild history: emergentintegrations LlmChat keeps history in-memory per instance.
@@ -540,7 +624,8 @@ async def ai_history(session_id: str, authorization: Optional[str] = Header(defa
 
 @api_router.post("/ai/translate")
 async def ai_translate(payload: TranslateIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     sys = (
         f"You are a professional translator. Translate the user's text to {payload.target_language}. "
         "Return ONLY the translated text with no preface, no quotes, no explanations."
@@ -551,7 +636,8 @@ async def ai_translate(payload: TranslateIn, authorization: Optional[str] = Head
 
 @api_router.post("/ai/email-writer")
 async def ai_email(payload: AIRequestIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     sys = (
         "You are an expert email writer. Given the user's intent, write a clear, polite, professional email. "
         "Include a subject line prefixed 'Subject:' on the first line, then a blank line, then the body. Keep it concise."
@@ -562,7 +648,8 @@ async def ai_email(payload: AIRequestIn, authorization: Optional[str] = Header(d
 
 @api_router.post("/ai/grammar")
 async def ai_grammar(payload: AIRequestIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     sys = (
         "You are a grammar and clarity expert. Rewrite the user's text with correct grammar, spelling, "
         "punctuation, and natural flow. Keep the original meaning and tone. Return ONLY the corrected text."
@@ -573,7 +660,8 @@ async def ai_grammar(payload: AIRequestIn, authorization: Optional[str] = Header
 
 @api_router.post("/ai/summarize")
 async def ai_summarize(payload: AIRequestIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     sys = (
         "You are a summarization expert. Produce a crisp summary of the user's content. "
         "Use 3–6 bullet points, each starting with '• '. Keep it under 120 words total."
@@ -584,7 +672,8 @@ async def ai_summarize(payload: AIRequestIn, authorization: Optional[str] = Head
 
 @api_router.post("/ai/study")
 async def ai_study(payload: AIRequestIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
     sys = (
         "You are a friendly study assistant. Explain the user's topic simply and thoroughly. "
         "Structure the reply with: 1) A one-line definition, 2) Key points (bullets), "

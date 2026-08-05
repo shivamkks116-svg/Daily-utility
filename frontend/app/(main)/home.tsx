@@ -11,6 +11,7 @@ import { api } from "@/src/api/client";
 import { tap } from "@/src/utils/haptics";
 import { storage } from "@/src/utils/storage";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { AdBanner } from "@/src/ads/AdBanner";
 
 const HERO_BG =
   "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85";
@@ -325,6 +326,10 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
+        </View>
+
+        <View style={{ marginTop: spacing.lg }}>
+          <AdBanner testID="home-banner" />
         </View>
       </ScrollView>
     </View>

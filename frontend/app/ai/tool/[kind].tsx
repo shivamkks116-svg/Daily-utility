@@ -14,6 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/src/api/client";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { AILimitDialog } from "@/src/components/AILimitDialog";
+import { isQuotaExceeded } from "@/src/utils/aiErrors";
 
 type ToolKind = "translator" | "grammar" | "summarize" | "email" | "study";
 
@@ -82,6 +84,8 @@ export default function AIToolScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limitVisible, setLimitVisible] = useState(false);
+  const [pendingRetry, setPendingRetry] = useState<boolean>(false);
 
   async function submit() {
     if (!text.trim()) return;
@@ -89,13 +93,18 @@ export default function AIToolScreen() {
     setError(null);
     setResult(null);
     try {
-      const body: any = config.extra === "language"
+      const body: Record<string, unknown> = config.extra === "language"
         ? { text: text.trim(), target_language: lang }
         : { prompt: text.trim() };
       const r = await api<{ result: string }>(config.endpoint, { method: "POST", body });
       setResult(r.result);
-    } catch (e: any) {
-      setError(e?.message || "AI error");
+    } catch (e: unknown) {
+      if (isQuotaExceeded(e)) {
+        setPendingRetry(true);
+        setLimitVisible(true);
+      } else {
+        setError((e as { message?: string })?.message || "AI error");
+      }
     } finally {
       setLoading(false);
     }
@@ -196,6 +205,19 @@ export default function AIToolScreen() {
           </View>
         ) : null}
       </KeyboardAwareScrollView>
+
+      <AILimitDialog
+        visible={limitVisible}
+        onClose={() => {
+          setLimitVisible(false);
+          setPendingRetry(false);
+        }}
+        onGranted={() => {
+          const shouldRetry = pendingRetry;
+          setPendingRetry(false);
+          if (shouldRetry) submit();
+        }}
+      />
     </View>
   );
 }

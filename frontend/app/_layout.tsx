@@ -9,6 +9,7 @@ import { KeyboardProvider } from "@/src/utils/keyboard";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/contexts/AuthContext";
 import { AppLockGate } from "@/src/components/AppLockGate";
+import { initAdsOnce } from "@/src/ads/init";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -21,6 +22,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded || error) {
       SplashScreen.hideAsync();
+      // Initialize AdMob & preload interstitial once fonts are ready.
+      initAdsOnce();
     }
   }, [loaded, error]);
 

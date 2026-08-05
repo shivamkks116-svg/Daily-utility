@@ -92,8 +92,19 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
-    const msg = (data && (data.detail || data.message)) || `HTTP ${res.status}`;
-    throw new Error(typeof msg === "string" ? msg : "Request failed");
+    const rawDetail = data && (data.detail ?? data.message);
+    const structured = rawDetail && typeof rawDetail === "object" ? rawDetail : null;
+    const msg =
+      (structured && (structured.message || structured.error)) ||
+      (typeof rawDetail === "string" ? rawDetail : null) ||
+      `HTTP ${res.status}`;
+    const err = new Error(typeof msg === "string" ? msg : "Request failed") as Error & {
+      status?: number;
+      detail?: unknown;
+    };
+    err.status = res.status;
+    err.detail = rawDetail;
+    throw err;
   }
   return data as T;
 }

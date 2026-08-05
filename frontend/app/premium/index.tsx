@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import React from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, Pressable,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api } from "@/src/api/client";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 
-type PremiumState = { premium: boolean; plan: string | null; activated_at: string | null };
+type Feature = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  desc: string;
+};
 
-const FEATURES = [
+const FEATURES: Feature[] = [
   { icon: "sparkles", label: "Unlimited AI conversations", desc: "No caps on chat, translations, summaries" },
   { icon: "cloud-upload", label: "Cloud backup & sync", desc: "Your data safely mirrored across devices" },
   { icon: "close-circle", label: "Zero ads", desc: "A distraction-free, calm experience" },
@@ -20,213 +23,254 @@ const FEATURES = [
   { icon: "rocket", label: "Priority AI access", desc: "Faster response times, priority queue" },
 ];
 
-const PLANS = [
-  { key: "monthly",  label: "Monthly",  price: "₹149",    sub: "/month",  best: false },
-  { key: "yearly",   label: "Yearly",   price: "₹899",    sub: "/year (Save 50%)", best: true },
-  { key: "lifetime", label: "Lifetime", price: "₹1,999",  sub: "one-time", best: false },
-];
-
 export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [status, setStatus] = useState<PremiumState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
-  const [selected, setSelected] = useState("yearly");
-
-  const load = useCallback(async () => {
-    try {
-      const r = await api<PremiumState>("/premium/status");
-      setStatus(r);
-    } catch {} finally { setLoading(false); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  async function purchase() {
-    setPurchasing(selected);
-    try {
-      await api<PremiumState>("/premium/mock-purchase", { method: "POST", body: { plan: selected } });
-      await load();
-    } finally { setPurchasing(null); }
-  }
-
-  async function cancel() {
-    await api("/premium/cancel", { method: "POST" });
-    await load();
-  }
-
-  if (loading) {
-    return <View style={[styles.root, { alignItems: "center", justifyContent: "center" }]}><ActivityIndicator color={colors.brandPrimary} /></View>;
-  }
-
-  const isPremium = status?.premium;
 
   return (
-    <View style={styles.root} testID="premium-screen">
-      <LinearGradient
-        colors={[colors.brandTertiary, colors.surface]}
-        style={styles.gradient}
-      />
-      <SafeAreaView edges={["top"]} style={styles.header}>
-        <Pressable testID="premium-back" onPress={() => router.back()} style={styles.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
-        </Pressable>
-        <View style={{ width: 44 }} />
+    <View style={{ flex: 1, backgroundColor: colors.surface }} testID="premium-screen">
+      <SafeAreaView edges={["top"]}>
+        <View style={styles.header}>
+          <Pressable
+            testID="premium-back"
+            onPress={() => router.back()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Premium</Text>
+          <View style={styles.iconBtn} />
+        </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 140 }} showsVerticalScrollIndicator={false}>
-        <View style={styles.top}>
-          <View style={styles.crown}>
-            <Ionicons name="diamond" size={30} color={colors.onBrandPrimary} />
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: spacing.xl, paddingBottom: 40 + insets.bottom }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero */}
+        <LinearGradient
+          colors={[colors.brandPrimary, colors.brandSecondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.badge}>
+            <Ionicons name="time" size={14} color={colors.onBrandPrimary} />
+            <Text style={styles.badgeText}>Coming Soon</Text>
           </View>
-          <Text style={styles.title}>DailyHub{"\n"}Premium.</Text>
-          <Text style={styles.subtitle}>Unlock everything DailyHub AI can do — in one calm, ad-free experience.</Text>
-        </View>
-
-        {isPremium ? (
-          <View style={styles.activeCard} testID="premium-active">
-            <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.activeTitle}>Premium active</Text>
-              <Text style={styles.activeSub}>Plan: {status?.plan}</Text>
-            </View>
-            <Pressable testID="premium-cancel-btn" onPress={cancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
+          <View style={styles.diamondWrap}>
+            <Ionicons name="diamond" size={44} color={colors.onBrandPrimary} />
           </View>
-        ) : null}
+          <Text style={styles.heroTitle}>DailyHub AI Premium</Text>
+          <Text style={styles.heroSubtitle}>
+            Premium Membership will be available in a future update.{"\n"}Stay tuned — the wait will
+            be worth it.
+          </Text>
+        </LinearGradient>
 
-        <View style={styles.features}>
-          {FEATURES.map(f => (
-            <View key={f.label} style={styles.featureRow}>
-              <View style={styles.featureIcon}><Ionicons name={f.icon as any} size={16} color={colors.brandPrimary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.featureTitle}>{f.label}</Text>
-                <Text style={styles.featureDesc}>{f.desc}</Text>
+        {/* Features preview */}
+        <Text style={styles.sectionTitle}>What you&apos;ll unlock</Text>
+        <View style={styles.featuresGrid}>
+          {FEATURES.map((f) => (
+            <View key={f.label} style={styles.featureCard} testID={`feature-${f.icon}`}>
+              <View style={styles.featureIconBg}>
+                <Ionicons name={f.icon} size={20} color={colors.brandPrimary} />
               </View>
+              <Text style={styles.featureLabel}>{f.label}</Text>
+              <Text style={styles.featureDesc}>{f.desc}</Text>
             </View>
           ))}
         </View>
 
-        {!isPremium ? (
-          <>
-            <Text style={styles.pickTitle}>Choose your plan</Text>
-            <View style={styles.plans}>
-              {PLANS.map(p => {
-                const active = selected === p.key;
-                return (
-                  <Pressable
-                    key={p.key}
-                    testID={`plan-${p.key}`}
-                    onPress={() => setSelected(p.key)}
-                    style={[styles.plan, active && styles.planActive]}
-                  >
-                    {p.best ? <View style={styles.bestBadge}><Text style={styles.bestText}>Best value</Text></View> : null}
-                    <Text style={styles.planLabel}>{p.label}</Text>
-                    <Text style={styles.planPrice}>{p.price}</Text>
-                    <Text style={styles.planSub}>{p.sub}</Text>
-                    <View style={[styles.planCheck, active && { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary }]}>
-                      {active ? <Ionicons name="checkmark" size={14} color={colors.onBrandPrimary} /> : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
+        {/* Locked purchase card */}
+        <View style={styles.lockCard} testID="premium-locked-cta">
+          <View style={styles.lockRow}>
+            <View style={styles.lockIcon}>
+              <Ionicons name="lock-closed" size={22} color={colors.onBrandPrimary} />
             </View>
-          </>
-        ) : null}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.lockTitle}>Purchases not yet available</Text>
+              <Text style={styles.lockDesc}>
+                We&apos;re polishing subscriptions carefully. You&apos;ll see plans and pricing right here
+                as soon as they go live.
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            disabled
+            testID="premium-disabled-btn"
+            style={[styles.disabledBtn]}
+          >
+            <Ionicons name="hourglass-outline" size={18} color={colors.onSurfaceTertiary} />
+            <Text style={styles.disabledBtnText}>Coming Soon</Text>
+          </Pressable>
+          <Text style={styles.notifyText}>
+            💡 In the meantime, watch a Rewarded Ad in AI Chat to unlock extra free requests.
+          </Text>
+        </View>
 
-        <View style={styles.disclaimer} testID="premium-mock-notice">
-          <Ionicons name="information-circle" size={14} color={colors.onSurfaceTertiary} />
-          <Text style={styles.disclaimerText}>
-            Purchases are MOCKED in this preview. Real Play Billing v8 activates automatically after you deploy and generate an Android build.
+        {/* Notify me */}
+        <View style={styles.notifyCard} testID="premium-notify-card">
+          <Ionicons name="notifications-outline" size={20} color={colors.onSurfaceSecondary} />
+          <Text style={styles.notifyLabel}>
+            We&apos;ll notify you via the app when Premium launches. No spam, we promise.
           </Text>
         </View>
       </ScrollView>
-
-      {!isPremium ? (
-        <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-          <Pressable
-            testID="premium-purchase-btn"
-            onPress={purchase}
-            disabled={purchasing !== null}
-            style={({ pressed }) => [styles.buyBtn, pressed && { opacity: 0.9 }, purchasing && { opacity: 0.7 }]}
-          >
-            {purchasing ? (
-              <ActivityIndicator color={colors.onBrandPrimary} />
-            ) : (
-              <>
-                <Ionicons name="lock-open" size={20} color={colors.onBrandPrimary} />
-                <Text style={styles.buyText}>Unlock Premium</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surface },
-  gradient: { position: "absolute", top: 0, left: 0, right: 0, height: 400 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
-  top: { alignItems: "flex-start", paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.md },
-  crown: { width: 56, height: 56, borderRadius: radius.lg, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
-  title: {
-    color: colors.onSurface,
-    fontSize: 40, fontWeight: fontWeight.extrabold, letterSpacing: -1.5, lineHeight: 44,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  subtitle: { color: colors.onSurfaceSecondary, fontSize: fontSize.base, lineHeight: 22 },
-  activeCard: {
-    marginHorizontal: spacing.xl, padding: spacing.lg, borderRadius: radius.lg,
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.md },
+  headerTitle: { color: colors.onSurface, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+
+  hero: {
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    alignItems: "center",
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: radius.pill,
+    marginBottom: spacing.md,
+  },
+  badgeText: {
+    color: colors.onBrandPrimary,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.5,
+  },
+  diamondWrap: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  heroTitle: {
+    color: colors.onBrandPrimary,
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.extrabold,
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  heroSubtitle: {
+    color: colors.onBrandPrimary,
+    fontSize: fontSize.sm,
+    marginTop: spacing.sm,
+    textAlign: "center",
+    opacity: 0.9,
+    lineHeight: 20,
+  },
+
+  sectionTitle: {
+    color: colors.onSurfaceTertiary,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  featuresGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  featureCard: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  featureIconBg: {
+    width: 36, height: 36, borderRadius: radius.md,
     backgroundColor: colors.brandTertiary,
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    alignItems: "center", justifyContent: "center",
+    marginBottom: spacing.xs,
   },
-  activeTitle: { color: colors.onSurface, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
-  activeSub: { color: colors.onBrandTertiary, fontSize: fontSize.sm, marginTop: 2 },
-  cancelText: { color: colors.error, fontWeight: fontWeight.bold },
-  features: { paddingHorizontal: spacing.xl, gap: spacing.md, marginTop: spacing.xl },
-  featureRow: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
-  featureIcon: { width: 32, height: 32, borderRadius: radius.md, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  featureTitle: { color: colors.onSurface, fontSize: fontSize.base, fontWeight: fontWeight.semibold },
-  featureDesc: { color: colors.onSurfaceTertiary, fontSize: fontSize.sm, marginTop: 2 },
-  pickTitle: {
+  featureLabel: {
     color: colors.onSurface,
-    fontSize: fontSize.xl, fontWeight: fontWeight.bold, letterSpacing: -0.3,
-    paddingHorizontal: spacing.xl, marginTop: spacing.xxl, marginBottom: spacing.md,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
   },
-  plans: { paddingHorizontal: spacing.xl, gap: spacing.md },
-  plan: {
-    padding: spacing.lg, borderRadius: radius.lg,
-    backgroundColor: colors.surfaceSecondary, borderWidth: 2, borderColor: colors.border,
+  featureDesc: {
+    color: colors.onSurfaceTertiary,
+    fontSize: fontSize.xs,
+    lineHeight: 16,
   },
-  planActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
-  bestBadge: { position: "absolute", top: -10, right: spacing.md, backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.md, height: 20, borderRadius: radius.pill, justifyContent: "center" },
-  bestText: { color: colors.onBrandPrimary, fontSize: 10, fontWeight: fontWeight.bold, letterSpacing: 0.5 },
-  planLabel: { color: colors.onSurface, fontSize: fontSize.base, fontWeight: fontWeight.semibold },
-  planPrice: { color: colors.onSurface, fontSize: 30, fontWeight: fontWeight.extrabold, letterSpacing: -0.5, marginTop: 4 },
-  planSub: { color: colors.onSurfaceTertiary, fontSize: fontSize.sm, marginTop: 2 },
-  planCheck: {
-    position: "absolute", right: spacing.lg, top: spacing.lg,
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center",
+
+  lockCard: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
-  disclaimer: {
-    marginHorizontal: spacing.xl, marginTop: spacing.xl, padding: spacing.md, borderRadius: radius.md,
-    backgroundColor: colors.surfaceSecondary, flexDirection: "row", gap: spacing.sm, alignItems: "flex-start",
+  lockRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "flex-start",
   },
-  disclaimerText: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, flex: 1, lineHeight: 16 },
-  buyBar: {
-    position: "absolute", left: 0, right: 0, bottom: 0,
-    paddingHorizontal: spacing.xl, paddingTop: spacing.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
-  },
-  buyBtn: {
-    height: 56, borderRadius: radius.pill,
+  lockIcon: {
+    width: 44, height: 44, borderRadius: radius.md,
     backgroundColor: colors.brandPrimary,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md,
+    alignItems: "center", justifyContent: "center",
   },
-  buyText: { color: colors.onBrandPrimary, fontSize: fontSize.lg, fontWeight: fontWeight.bold },
+  lockTitle: { color: colors.onSurface, fontSize: fontSize.base, fontWeight: fontWeight.bold, marginBottom: 2 },
+  lockDesc: { color: colors.onSurfaceSecondary, fontSize: fontSize.sm, lineHeight: 20 },
+  disabledBtn: {
+    marginTop: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    height: 52,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  disabledBtnText: { color: colors.onSurfaceTertiary, fontSize: fontSize.base, fontWeight: fontWeight.bold },
+  notifyText: {
+    color: colors.onSurfaceTertiary,
+    fontSize: fontSize.xs,
+    marginTop: spacing.md,
+    textAlign: "center",
+  },
+
+  notifyCard: {
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "center",
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.brandTertiary,
+    marginTop: spacing.sm,
+  },
+  notifyLabel: {
+    flex: 1,
+    color: colors.onBrandTertiary,
+    fontSize: fontSize.sm,
+    lineHeight: 20,
+  },
 });

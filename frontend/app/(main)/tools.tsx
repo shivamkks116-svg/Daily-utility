@@ -11,6 +11,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { AdBanner } from "@/src/ads/AdBanner";
+import { maybeShowInterstitial } from "@/src/ads/interstitial";
 
 type Tool = {
   key: string;
@@ -137,7 +139,12 @@ export default function ToolsScreen() {
               testID={`tool-${t.key}`}
               onPress={() => {
                 if (t.soon) return;
-                if (t.route) router.push(t.route as any);
+                if (t.route) {
+                  // Don't interrupt Notes or AI Chat with ads.
+                  const skipAd = t.route.startsWith("/notes") || t.route.startsWith("/ai");
+                  if (!skipAd) maybeShowInterstitial("tool-launch");
+                  router.push(t.route as any);
+                }
               }}
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}
             >
@@ -161,6 +168,10 @@ export default function ToolsScreen() {
               <Text style={styles.emptyText}>No tools found</Text>
             </View>
           ) : null}
+        </View>
+
+        <View style={{ marginTop: spacing.lg }}>
+          <AdBanner testID="tools-banner" />
         </View>
       </ScrollView>
     </View>
