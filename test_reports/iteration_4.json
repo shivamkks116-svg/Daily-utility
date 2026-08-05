@@ -1,0 +1,40 @@
+{
+  "summary": "Premium UI polish (Home / AI Chat / Profile) validated on mobile viewport 390x844 via guest login. Backend smoke: GET /api/, POST /api/auth/guest, GET /api/todos, GET /api/focus, GET /api/habits all return 200 with correct schema. HOME: hero + quote-card ('TODAY'S SPARK'), progress-card (overall %, streak pill, 3 progress bars Tasks/Focus/Habits), all 6 quick-action tiles (Notes/To-Do/Habits/Focus/AI Chat/Expenses) render and navigate to /notes /todos /habits /focus /ai/chat /expenses correctly. 'Recently used' horizontal chip appears after first tap of a quick action (verified with quick-notes -> recent-notes chip shown). 'Coming soon' chip row renders. Pull-to-refresh handler wired via RefreshControl (web preview can't fire touch pull, but load() is invoked on focus and re-fetches todos/focus/habits). AI CHAT: typing-indicator bubble appeared during Gemini call, then disappeared when reply arrived. Assistant message showed both Copy and Regenerate buttons; Copy tap did not crash (expo-clipboard) and Regenerate correctly dropped the last assistant message and re-fetched (msg-assistant count remained 1 after regenerate = last reply replaced). Starter prompts on empty chat also work. PROFILE: All 18 testIDs verified visible - Preferences (Theme/Notifications/Language/App Lock), Sync & Storage (Backup/Storage/Restore), Community (Rate/Share/Feedback/Help/Support), Data & Privacy (Privacy/Terms), About (Version/Developer), Premium upgrade CTA and Sign out. Toast overlay confirmed after Restore tap. REGRESSION SWEEP (21 routes) all load without red-box: /todos, /habits, /focus, /expenses, /notes, /reminders, /pdf, /premium, /qr, /voice, /calc, /calc/scientific, /calc/emi, /calc/sip, /calc/currency, /calc/unit, /ai/tool/translator, /ai/tool/grammar, /ai/tool/summarize, /ai/tool/email, /ai/tool/study. 0 pageerror events captured across the entire test session. Bottom tab bar switches Home/Tools/Profile correctly. Only cosmetic console warnings observed (deprecated 'shadow*' style props from RN Web + 'Image style.resizeMode is deprecated' + expo-notifications web-not-supported notices) - all pre-existing, not introduced by this polish.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home hero", "issues": ["Top-line date ('Sunday, August 5') sits partially behind status-bar area on tight iPhone SE viewport - readable but slightly clipped in first ~2px. Cosmetic; not blocking."]}
+    ],
+    "react_native_issues": [
+      {"component": "Deprecated style props (RN Web)", "issue": "Console warns: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Appears repeatedly during app load. Cosmetic - RN 0.76+ warns when shadow{Color,Offset,Opacity,Radius} used on web. Consider migrating shadowed cards (progressCard/contRow/tile) to a cross-platform elevation helper. Reference: /app/frontend/app/(main)/home.tsx"},
+      {"component": "expo-image Image.resizeMode", "issue": "Console warns: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' - heroBg uses resizeMode inside StyleSheet. Move `resizeMode: \"cover\"` from styles.heroBg to <Image resizeMode=\"cover\" />. Reference: /app/frontend/app/(main)/home.tsx:362"},
+      {"component": "expo-notifications on web", "issue": "'[expo-notifications] Listening to push token changes is not yet fully supported on web.' Pre-existing web-only limitation, not from this polish."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dailyhub_backend.py",
+    "/app/backend/tests/test_dailyhub_v2_backend.py"
+  ],
+  "action_items": [
+    "(Nice-to-have) Migrate shadow* style props on progressCard / contRow / tile / recentChip to boxShadow (or cross-platform Platform.select) to silence RN-Web warnings.",
+    "(Nice-to-have) Move `resizeMode: 'cover'` from styles.heroBg into the <Image> prop to satisfy expo-image deprecation warning. Reference: /app/frontend/app/(main)/home.tsx:158-362."
+  ],
+  "critical_code_review_comments": [
+    "home.tsx: `load()` runs on both useEffect and useFocusEffect — the useEffect first-run + focus-run causes 2 back-to-back /todos+/focus+/habits fetches on cold start. Not a bug (idempotent GETs) but consider removing the plain useEffect since useFocusEffect fires on mount too.",
+    "chat.tsx regenerate() slices to `lastIndexOf('assistant')` and re-sends the last user message; if a user message was the very last item (e.g. after an error), regenerate won't be shown (guarded by `index === messages.length - 1` on assistant bubbles). Behavior looks intended.",
+    "profile.tsx showToast uses a stateful 2.4s auto-dismiss; if user taps multiple rows rapidly, later toast messages replace earlier ones — acceptable UX.",
+    "haptics.ts correctly guards with Platform.OS === 'web' early-return; safe on preview."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 endpoints)", "frontend": "100% (Home 10/10 sections, AI Chat 5/5 flows incl typing+copy+regenerate, Profile 18/18 rows, Regression 21/21 routes)"},
+  "seed_data_creation": "Guest 'TEST_Polish' created via curl for backend smoke. UI test also creates ephemeral guest sessions via login-guest-button (not cleaned up but volume is negligible and prefix-less guest data auto-expires per 30-day policy).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "This iteration was UI polish only; no backend changes. Public URL: EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env. Guest login testID='login-guest-button'. Home testIDs: home-screen, quote-card, progress-card, quick-{notes|todos|habits|focus|ai-chat|expense}, recent-{key}, see-all-tools, profile-avatar-button, continue-todos, continue-focus. Chat testIDs: ai-chat-screen, chat-input, chat-send-btn, chat-back, typing-indicator, msg-user, msg-assistant, msg-copy-{id}, msg-regenerate, starter-{0..3}. Profile testIDs: profile-screen, profile-toast, row-{theme|notif|language|app-lock|backup|storage|restore|rate|share|feedback|help|support|privacy|terms|version|developer}, premium-upgrade-btn, logout-button. Correct calc routes are /calc and /calc/{scientific|emi|sip|currency|unit}. Correct AI-tool routes are /ai/tool/{translator|grammar|summarize|email|study}.",
+  "rca_of_issue": "N/A - polish shipped clean, no functional regressions detected."
+}

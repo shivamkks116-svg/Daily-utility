@@ -84,12 +84,26 @@ export default function ProfileScreen() {
           <Row icon="moon" label="Theme" value="Dark (Material You)" testID="row-theme" />
           <Row icon="notifications-outline" label="Notifications" value="Enabled" testID="row-notif" />
           <Row icon="language" label="Language" value="English" testID="row-language" />
+          <Row icon="lock-closed-outline" label="App Lock" value="Off" testID="row-app-lock" />
+        </Section>
+
+        <Section title="Sync & Storage">
+          <Row icon="cloud-upload-outline" label="Backup Status" value={user?.is_guest ? "Local only" : "Auto (Cloud)"} testID="row-backup" />
+          <Row icon="server-outline" label="Storage Usage" value="< 1 MB" testID="row-storage" />
+          <Row icon="refresh-outline" label="Restore Purchases" testID="row-restore" onPress={() => showToast("Restore: no active purchases found.")} />
+        </Section>
+
+        <Section title="Community">
+          <Row icon="star-outline" label="Rate DailyHub AI" testID="row-rate" onPress={() => showToast("Thanks! Rating opens on Play Store after publish.")} />
+          <Row icon="share-social-outline" label="Share App" testID="row-share" onPress={() => showToast("Share sheet opens on device — coming to preview soon.")} />
+          <Row icon="chatbubble-ellipses-outline" label="Send Feedback" testID="row-feedback" onPress={() => showToast("Feedback: feedback@shivaminnovation.dev")} />
+          <Row icon="help-circle-outline" label="Help Center" testID="row-help" onPress={() => showToast("Help Center: opens in-app soon.")} />
+          <Row icon="mail-outline" label="Contact Support" testID="row-support" onPress={() => showToast("Support: support@shivaminnovation.dev")} />
         </Section>
 
         <Section title="Data & Privacy">
           <Row icon="shield-checkmark-outline" label="Privacy Policy" testID="row-privacy" />
           <Row icon="document-text-outline" label="Terms & Conditions" testID="row-terms" />
-          <Row icon="cloud-upload-outline" label="Backup & Sync" value="Auto" testID="row-backup" />
         </Section>
 
         <Section title="About">
@@ -129,13 +143,15 @@ function Row({
   label,
   value,
   testID,
+  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value?: string;
   testID: string;
+  onPress?: () => void;
 }) {
-  return (
+  const content = (
     <View style={styles.row} testID={testID}>
       <Ionicons name={icon} size={18} color={colors.onSurfaceSecondary} />
       <Text style={styles.rowLabel}>{label}</Text>
@@ -143,6 +159,8 @@ function Row({
       <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
     </View>
   );
+  if (onPress) return <Pressable onPress={onPress} android_ripple={{ color: colors.borderStrong }}>{content}</Pressable>;
+  return content;
 }
 
 const styles = StyleSheet.create({

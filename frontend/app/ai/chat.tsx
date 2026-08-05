@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "@/src/utils/keyboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "@/src/api/client";
+import { tap, success } from "@/src/utils/haptics";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at?: string };
@@ -51,6 +53,7 @@ export default function AIChatScreen() {
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setSending(true);
+    tap();
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     try {
       const r = await api<{ reply: string }>("/ai/chat", {
@@ -59,6 +62,7 @@ export default function AIChatScreen() {
       });
       const assistantMsg: Msg = { id: `a-${Date.now()}`, role: "assistant", content: r.reply };
       setMessages((m) => [...m, assistantMsg]);
+      success();
     } catch (e: any) {
       setMessages((m) => [
         ...m,
@@ -69,6 +73,24 @@ export default function AIChatScreen() {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     }
   }, [input, sending]);
+
+  const regenerate = useCallback(async () => {
+    // Find the last user message and re-send it
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser || sending) return;
+    // Drop the last assistant message
+    setMessages((m) => {
+      const idx = m.map(x => x.role).lastIndexOf("assistant");
+      if (idx === -1) return m;
+      return m.slice(0, idx);
+    });
+    await send(lastUser.content);
+  }, [messages, sending, send]);
+
+  const copyText = useCallback(async (text: string) => {
+    tap();
+    try { await Clipboard.setStringAsync(text); success(); } catch {}
+  }, []);
 
   const empty = messages.length === 0;
 
@@ -119,7 +141,8 @@ export default function AIChatScreen() {
             data={messages}
             keyExtractor={(m) => m.id}
             contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md }}
-            renderItem={({ item }) => (
+            ListFooterComponent={sending ? <TypingIndicator /> : null}
+            renderItem={({ item, index }) => (
               <View
                 style={[styles.bubble, item.role === "user" ? styles.userBubble : styles.aiBubble]}
                 testID={`msg-${item.role}`}
@@ -133,6 +156,30 @@ export default function AIChatScreen() {
                 <Text style={item.role === "user" ? styles.userText : styles.aiText}>
                   {item.content}
                 </Text>
+                {item.role === "assistant" && !item.content.startsWith("⚠️") ? (
+                  <View style={styles.msgActions}>
+                    <Pressable
+                      testID={`msg-copy-${item.id}`}
+                      onPress={() => copyText(item.content)}
+                      style={styles.msgActionBtn}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="copy-outline" size={14} color={colors.onSurfaceTertiary} />
+                      <Text style={styles.msgActionText}>Copy</Text>
+                    </Pressable>
+                    {index === messages.length - 1 && !sending ? (
+                      <Pressable
+                        testID="msg-regenerate"
+                        onPress={regenerate}
+                        style={styles.msgActionBtn}
+                        hitSlop={6}
+                      >
+                        <Ionicons name="refresh" size={14} color={colors.onSurfaceTertiary} />
+                        <Text style={styles.msgActionText}>Regenerate</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
             )}
           />
@@ -217,6 +264,17 @@ const styles = StyleSheet.create({
   },
   userText: { color: colors.onBrandPrimary, fontSize: fontSize.base, lineHeight: 22 },
   aiText: { color: colors.onSurface, fontSize: fontSize.base, lineHeight: 22 },
+  msgActions: { flexDirection: "row", gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
+  msgActionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  msgActionText: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
+  typingBubble: {
+    alignSelf: "flex-start",
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4,
+    borderRadius: radius.lg, borderBottomLeftRadius: 4,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.brandPrimary },
   inputBar: {
     flexDirection: "row", alignItems: "flex-end", gap: spacing.sm,
     paddingHorizontal: spacing.lg, paddingTop: spacing.sm,
@@ -238,3 +296,30 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
 });
+
+function TypingIndicator() {
+  const dots = [0, 1, 2];
+  return (
+    <View style={styles.typingBubble} testID="typing-indicator">
+      {dots.map((i) => (
+        <AnimatedDot key={i} delay={i * 180} />
+      ))}
+    </View>
+  );
+}
+
+function AnimatedDot({ delay }: { delay: number }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const start = Date.now() + delay;
+    const t = setInterval(() => {
+      if (!alive) return;
+      setTick(Date.now() - start);
+    }, 100);
+    return () => { alive = false; clearInterval(t); };
+  }, [delay]);
+  const phase = (tick % 1000) / 1000;
+  const opacity = 0.3 + 0.7 * Math.max(0, Math.sin(phase * Math.PI * 2));
+  return <View style={[styles.typingDot, { opacity }]} />;
+}
