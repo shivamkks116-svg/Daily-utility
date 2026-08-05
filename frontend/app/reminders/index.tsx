@@ -31,6 +31,7 @@ Notifications.setNotificationHandler({
 });
 
 async function scheduleForReminder(r: Reminder) {
+  if (Platform.OS === "web") return; // notifications APIs unavailable on web
   // Cancel prior ones with matching identifier prefix
   const all = await Notifications.getAllScheduledNotificationsAsync();
   for (const s of all) {
@@ -149,7 +150,7 @@ export default function RemindersScreen() {
   async function del(r: Reminder) {
     setItems(prev => prev.filter(x => x.id !== r.id));
     await api(`/reminders/${r.id}`, { method: "DELETE" });
-    const all = await Notifications.getAllScheduledNotificationsAsync();
+    const all = Platform.OS === "web" ? [] : await Notifications.getAllScheduledNotificationsAsync();
     for (const s of all) if (s.identifier.startsWith(`rmd_${r.id}_`)) await Notifications.cancelScheduledNotificationAsync(s.identifier);
   }
 
