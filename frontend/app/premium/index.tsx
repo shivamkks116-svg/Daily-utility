@@ -21,9 +21,9 @@ const FEATURES = [
 ];
 
 const PLANS = [
-  { key: "monthly",  label: "Monthly",  price: "$4.99",   sub: "/month",  best: false },
-  { key: "yearly",   label: "Yearly",   price: "$29.99",  sub: "/year (Save 50%)", best: true },
-  { key: "lifetime", label: "Lifetime", price: "$79.99",  sub: "one-time", best: false },
+  { key: "monthly",  label: "Monthly",  price: "₹149",    sub: "/month",  best: false },
+  { key: "yearly",   label: "Yearly",   price: "₹899",    sub: "/year (Save 50%)", best: true },
+  { key: "lifetime", label: "Lifetime", price: "₹1,999",  sub: "one-time", best: false },
 ];
 
 export default function PremiumScreen() {

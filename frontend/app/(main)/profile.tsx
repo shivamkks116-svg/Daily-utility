@@ -15,6 +15,10 @@ export default function ProfileScreen() {
     setToast(msg);
     setTimeout(() => setToast(null), 2000);
   }
+  const isGuest = !user || user?.is_guest;
+  const nameEmoji = isGuest ? "🌱" : "👋";
+  const displayName = user?.name || "Guest";
+  const avatarChar = user?.name ? user.name.charAt(0).toUpperCase() : nameEmoji;
 
   async function handleLogout() {
     try {
@@ -42,14 +46,12 @@ export default function ProfileScreen() {
             {user?.picture ? (
               <Image source={{ uri: user.picture }} style={styles.avatarImg} />
             ) : (
-              <Text style={styles.avatarText}>
-                {(user?.name || "?").charAt(0).toUpperCase()}
-              </Text>
+              <Text style={styles.avatarText}>{avatarChar}</Text>
             )}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{user?.name || "Guest"}</Text>
-            <Text style={styles.userEmail}>{user?.is_guest ? "Guest account" : user?.email}</Text>
+            <Text style={styles.userName}>{nameEmoji}  {displayName}</Text>
+            <Text style={styles.userEmail}>{isGuest ? "Guest account" : user?.email}</Text>
           </View>
           <View style={styles.providerBadge}>
             <Ionicons
