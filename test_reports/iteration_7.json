@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend web-preview testing for DailyHub AI covering Premium 'Coming Soon' screen, AI rate-limit dialog, Profile settings rows, and Home/Tools navigation. 22/22 test assertions PASS. All requested testIDs present. Premium page renders with Coming Soon badge, correct title/subtitle, all 6 feature cards (sparkles, cloud-upload, close-circle, color-palette, download, rocket), disabled 'Coming Soon' button (aria-disabled=true), locked-cta and notify-card visible. Back navigation works. No purchase API call triggered. AI limit flow: guest sent 5 chat messages successfully, 6th returned HTTP 429 and ai-limit-dialog appeared with correct title 'reached today's free AI limit', watch-ad, try-tomorrow, and coming-soon rows. Watch Ad on web shows expected error 'Ads are only available on the mobile app'. Try-Tomorrow closes dialog. Profile: Theme picker (dark/light/system), Language picker (en/hi), Notifications toggle, Restore alert, Storage refresh, Privacy Policy screen, Terms & Conditions screen, App Lock PIN 4-digit set + confirm flow all work; the expected web-only 'Failed to save PIN' error appears from pin-error testID (documented as expected on web). Logout returns to /login. Home and Tools tabs load without crash.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ToggleRow (profile.tsx)", "issue": "The entire row is NOT tappable to toggle the Switch — only the Switch thumb itself accepts taps. Users tapping the row label (as is standard mobile UX) will see nothing happen. Ref: /app/frontend/app/(main)/profile.tsx lines 597-622 (ToggleRow). Fix: wrap in Pressable or add onPress to the row that calls onValueChange(!value).", "testID": "row-notif, row-app-lock", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Deprecation warnings", "issue": "Console warnings observed on web: 'shadow* style props are deprecated. Use boxShadow', 'Image: style.resizeMode is deprecated. Please use props.resizeMode', 'props.pointerEvents is deprecated. Use style.pointerEvents'. These are informational RN Web deprecation warnings; not blocking but should be cleaned up before release."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_7.json"],
+  "action_items": [
+    "(Optional/LOW) Make ToggleRow row-level tappable (wrap in Pressable with onPress={()=>onValueChange(!value)}) so tapping label toggles the switch — better mobile UX.",
+    "(Cosmetic) Replace deprecated RN Web style props: shadow* → boxShadow, style.resizeMode → props.resizeMode, props.pointerEvents → style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "premium/index.tsx: no purchase API call anywhere in the file — confirmed 'Coming Soon' semantics. Button is disabled and no onPress handler present. Good.",
+    "AILimitDialog.tsx: correctly checks ADS_ENABLED (Platform.OS === android/ios) before invoking rewarded ad SDK — graceful web fallback works as designed.",
+    "profile.tsx (~903 lines) is getting large; consider splitting PickerModal + PIN modal into standalone components to keep the file focused on the screen composition.",
+    "ads/rewarded.web.ts and other .web.ts stubs correctly resolve false/no-op so web preview doesn't break."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only per request)", "frontend": "100% (22/22 assertions pass)"},
+  "seed_data_creation": "Each test run creates a fresh guest session via /api/auth/guest at login. Guest quota resets per user so the 5-then-429 flow is reproducible. No cleanup required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend tests exercised via Playwright at http://localhost:3000 (mobile viewport 375x812). Guest login flow reliable. AI chat 5→429 flow takes ~30-60s (5 real Gemini calls). SecureStore is unavailable on web so PIN save always returns false → pin-error text 'Failed to save PIN. Try again.' is EXPECTED on web, NOT a bug. AdMob SDK is a no-op on web (rewarded returns false) — AILimitDialog surfaces the 'Ads are only available on the mobile app' message.",
+  "detailed_results": {
+    "Premium_screen": "PASS — premium-screen visible, 'Coming Soon' badge present (3 occurrences incl button label), title 'DailyHub AI Premium' visible, subtitle mentions future update, all 6 feature-* cards render, premium-disabled-btn has aria-disabled=true and text 'Coming Soon', premium-locked-cta and premium-notify-card visible, premium-back navigates back to /profile.",
+    "AI_limit_dialog": "PASS — after 5 successful /ai/chat calls, 6th returned 429 and ai-limit-dialog appeared. Title text 'reached today...free AI limit' present. ai-limit-watch-ad, ai-limit-try-tomorrow, ai-limit-coming-soon all visible. Tapping watch-ad on web produced error text 'Ads are only available on the mobile app...'. Tapping try-tomorrow closed the dialog (count=0).",
+    "Profile_theme": "PASS — row-theme opens picker with picker-option-dark/light/system. Selecting Light closes modal and shows profile-toast.",
+    "Profile_language": "PASS — row-language opens picker with picker-option-en/hi. Selecting Hindi closes modal.",
+    "Profile_notifications": "PASS — row-notif toggle animates on Switch click (row-container tap does not, see UI bug).",
+    "Profile_app_lock": "PASS — clicking the Switch opens 'Set App Lock PIN' modal. Entering 4 digits auto-transitions to 'Confirm PIN'. Entering same 4 digits triggers pin-error 'Failed to save PIN. Try again.' — expected on web due to SecureStore stub. pin-cancel closes the modal.",
+    "Profile_storage": "PASS — row-storage tap refreshes storage without error.",
+    "Profile_restore": "PASS — row-restore fires Alert (window.alert on web) with restore-purchases message.",
+    "Profile_privacy": "PASS — row-privacy navigates to /legal/privacy and privacy-screen renders.",
+    "Profile_terms": "PASS — row-terms navigates to /legal/terms and terms-screen renders.",
+    "Home_tab": "PASS — home-screen renders on /home with greeting, streak, quick actions.",
+    "Tools_tab": "PASS — /tools navigates without crash.",
+    "AI_tab": "PASS — /ai loads Hero + tool cards; open-ai-chat-cta navigates to /ai/chat.",
+    "Logout": "PASS — logout-button clears session and returns to /login where 'Continue as Guest' is visible."
+  }
+}
