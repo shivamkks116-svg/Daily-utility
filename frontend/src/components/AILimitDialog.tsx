@@ -19,7 +19,7 @@ export function AILimitDialog({ visible, onClose, onGranted }: AILimitDialogProp
   async function handleWatchAd() {
     setErr(null);
     if (!ADS_ENABLED) {
-      setErr("Ads are only available on the mobile app. Try again tomorrow.");
+      setErr("Rewarded ads will be enabled in the next update. For now, please try again tomorrow.");
       return;
     }
     setLoadingAd(true);
