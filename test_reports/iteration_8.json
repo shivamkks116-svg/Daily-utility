@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend regression after removing react-native-google-mobile-ads native library. 16/16 critical assertions PASS. App boots cleanly at http://localhost:3000; zero console/page errors mentioning react-native-google-mobile-ads, BannerAd, InterstitialAd, or RewardedAd. Home screen renders (home-banner slot renders nothing, count=0). Tools screen renders (tools-banner count=0), tapping tool-notes navigates to /notes normally with no ad interstitial. AI Chat: 5 successful /api/ai/chat calls (all 200), 6th returns 429 and ai-limit-dialog appears with title 'You have reached today's free AI limit', ai-limit-watch-ad, ai-limit-try-tomorrow, and ai-limit-coming-soon all visible. Tapping ai-limit-watch-ad correctly shows the updated stub message 'Rewarded ads will be enabled in the next update. For now, please try again tomorrow.' Tapping ai-limit-try-tomorrow closes the dialog. Premium page: premium-screen renders with Coming Soon hero, premium-disabled-btn present, 6 feature-* cards render. Profile: row-theme, row-language, row-notif, row-app-lock, row-storage, row-privacy, row-terms, and logout-button all present. Lint on /app/frontend/src/ads/** and AILimitDialog.tsx: clean, no issues. app.json plugins array no longer references react-native-google-mobile-ads. package.json does not depend on react-native-google-mobile-ads. node_modules/react-native-google-mobile-ads does not exist. All ad module stubs (ids.ts, AdBanner.tsx, init.ts, interstitial.ts, rewarded.ts) are pure no-op as specified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ads/ids.ts, ads/AdBanner.tsx, ads/init.ts, ads/interstitial.ts, ads/rewarded.ts are proper no-op stubs preserving API surface. Good.",
+    "AILimitDialog.tsx correctly gates on ADS_ENABLED (now false) and surfaces the new user-facing message. No AdMob imports remain.",
+    "app.json plugins array cleanly omits react-native-google-mobile-ads; historic supervisor log errors about the missing plugin are stale (pre-fix expo restart cycles); current expo bundling succeeds (1469 modules bundled, HTTP 200).",
+    "Only remaining textual references to 'react-native-google-mobile-ads' are inside comments in ads/ids.ts explaining WHY the SDK was removed (safe)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only per request)", "frontend": "100% (16/16 critical assertions pass)"},
+  "seed_data_creation": "Guest session via /api/auth/guest; guest quota resets so 5-then-429 flow is reproducible per test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Correct AI chat testIDs are chat-input and chat-send-btn (NOT ai-chat-input/ai-chat-send). Chat page: /ai/chat. Dialog testIDs: ai-limit-dialog, ai-limit-watch-ad, ai-limit-try-tomorrow, ai-limit-coming-soon. Home tab uses testID home-screen; Tools tab uses tools-screen. Banner slots (home-banner, tools-banner) return null so their testIDs will not be found in DOM by design (count=0 is the correct assertion). Guest 5+1 429 flow takes ~30-60s (5 real Gemini calls). Expected updated stub message: 'Rewarded ads will be enabled in the next update. For now, please try again tomorrow.'",
+  "detailed_results": {
+    "admob_import_scan": "PASS - grep of /app/frontend/src and /app/frontend/app finds ZERO active imports of react-native-google-mobile-ads or BannerAd/InterstitialAd/RewardedAd; only textual references are (a) comment in ads/ids.ts explaining removal, (b) function name showRewardedAd in ads/rewarded.ts, (c) import of showRewardedAd in AILimitDialog.tsx. Runtime console shows 0 AdMob-related warnings/errors.",
+    "app_json": "PASS - plugins: [expo-router, expo-splash-screen, expo-web-browser, expo-secure-store, expo-local-authentication, expo-camera, expo-audio, expo-notifications, expo-build-properties]. No react-native-google-mobile-ads entry.",
+    "package_json": "PASS - dependencies do NOT include react-native-google-mobile-ads. node_modules/react-native-google-mobile-ads directory absent.",
+    "ad_stubs": "PASS - ids.ts exports ADS_ENABLED=false, PRODUCTION_ADS=false, AD_UNIT_IDS={banner:'',interstitial:'',rewarded:''}. AdBanner returns null. initAdsOnce/preloadInterstitial/maybeShowInterstitial are empty. showRewardedAd resolves false.",
+    "home_screen": "PASS - home-screen testID present after guest login. home-banner count=0 (renders null, no throw).",
+    "tools_screen": "PASS - tools-screen testID present. tools-banner count=0. Tapping tool-notes navigates to /notes with no interstitial interruption.",
+    "ai_chat_5_then_429": "PASS - /api/ai/chat statuses observed: [200,200,200,200,200,429]. ai-limit-dialog appears exactly on the 6th send.",
+    "ai_limit_dialog_content": "PASS - title contains 'reached today's free AI limit'; ai-limit-watch-ad, ai-limit-try-tomorrow, ai-limit-coming-soon all visible.",
+    "watch_ad_updated_message": "PASS - Tapping ai-limit-watch-ad renders: 'Rewarded ads will be enabled in the next update. For now, please try again tomorrow.' (exact match).",
+    "try_tomorrow_close": "PASS - Tapping ai-limit-try-tomorrow removes ai-limit-dialog from DOM.",
+    "premium_screen": "PASS - premium-screen renders, Coming Soon text present, premium-disabled-btn present, 6 feature-* cards render.",
+    "profile_rows_smoke": "PASS - row-theme, row-language, row-notif, row-app-lock, row-storage, row-privacy, row-terms, logout-button all present.",
+    "lint_ads": "PASS - eslint on /app/frontend/src/ads/** returns 0 issues.",
+    "lint_ai_limit_dialog": "PASS - eslint on /app/frontend/src/components/AILimitDialog.tsx returns 0 issues.",
+    "console_errors": "PASS - 0 AdMob-related; only one benign 'Failed to load resource: status of 429' network error tied to the intentional AI quota block.",
+    "page_errors": "PASS - 0 uncaught page errors during full test run."
+  }
+}
