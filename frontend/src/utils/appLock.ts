@@ -25,7 +25,7 @@ export async function isPinSet(): Promise<boolean> {
 }
 
 export async function setPin(pin: string): Promise<boolean> {
-  if (!/^\d{4,6}$/.test(pin)) return false;
+  if (!/^\d{4}$/.test(pin)) return false;
   try {
     await SecureStore.setItemAsync(PIN_KEY, djb2(pin));
     return true;

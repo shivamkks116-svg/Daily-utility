@@ -90,15 +90,15 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   const pressDigit = useCallback(
     async (d: string) => {
       if (!locked) return;
-      const next = (pinBuf + d).slice(0, 6);
+      const next = (pinBuf + d).slice(0, 4);
       setPinBuf(next);
       if (next.length >= 4) {
         const ok = await verifyPin(next);
         if (ok) {
           setLocked(false);
           setPinBuf("");
-        } else if (next.length >= 6) {
-          // wrong 6-digit PIN — reset with feedback
+        } else {
+          // wrong 4-digit PIN — reset with feedback
           if (Platform.OS === "android") Vibration.vibrate(80);
           setShake(true);
           setTimeout(() => {
@@ -128,7 +128,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
 
         <View style={styles.middle}>
           <View style={[styles.dots, shake && { transform: [{ translateX: -6 }] }]}> 
-            {[0, 1, 2, 3, 4, 5].map((i) => {
+            {[0, 1, 2, 3].map((i) => {
               const filled = i < pinBuf.length;
               return <View key={i} style={[styles.dot, filled && styles.dotFilled]} />;
             })}

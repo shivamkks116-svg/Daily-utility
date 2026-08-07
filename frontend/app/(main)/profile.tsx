@@ -196,18 +196,16 @@ export default function ProfileScreen() {
 
   async function pressPinDigit(d: string) {
     if (!pinModal) return;
-    const next = (pinBuf + d).slice(0, 6);
+    const next = (pinBuf + d).slice(0, 4);
     setPinBuf(next);
     setPinError(null);
-    if (next.length >= 4 && next.length <= 6 && pinModal === "set") {
-      // when 4 or 6 digits entered, wait a beat and move to confirm
-      if (next.length === 4 || next.length === 6) {
-        setTimeout(() => {
-          setPinFirst(next);
-          setPinBuf("");
-          setPinModal("confirm");
-        }, 200);
-      }
+    if (next.length === 4 && pinModal === "set") {
+      // 4 digits entered — move to confirm phase
+      setTimeout(() => {
+        setPinFirst(next);
+        setPinBuf("");
+        setPinModal("confirm");
+      }, 200);
     } else if (pinModal === "confirm" && next.length === pinFirst.length) {
       // check match
       if (next === pinFirst) {
@@ -494,11 +492,11 @@ export default function ProfileScreen() {
             <Text style={styles.pinHint}>
               {pinModal === "confirm"
                 ? "Re-enter the same PIN to confirm"
-                : "Choose a 4–6 digit PIN. You'll need this to unlock the app."}
+                : "Choose a 4 digit PIN. You'll need this to unlock the app."}
             </Text>
 
             <View style={styles.pinDotsRow}>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
+              {[0, 1, 2, 3].map((i) => (
                 <View
                   key={i}
                   style={[styles.pinDot, i < pinBuf.length && styles.pinDotFilled]}
