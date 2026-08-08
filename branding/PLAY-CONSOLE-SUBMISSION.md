@@ -225,8 +225,9 @@ Recommended launch:
 
 Play Console → App content:
 
-- [ ] **Privacy Policy URL** filled → `https://daily-utility-ai.emergent.host/privacy`
-- [ ] **App access** — All functionality available without login (via Guest mode) → "All functionality is available without any restrictions"
+- [ ] **Privacy Policy URL** filled → `https://daily-utility-ai.emergent.host/api/legal/privacy`
+- [ ] **App access** — Select **"All functionality is available without any special access"** ✅
+      Reasoning: *"DailyHub AI provides a Guest mode where all core features are fully accessible without any sign-in requirement. Google Sign-In is optional and only enhances the experience with cloud sync."*
 - [ ] **Ads** — No (for v1.0)
 - [ ] **Content rating** — Complete IARC questionnaire (should result in "Everyone")
 - [ ] **Target audience** — 13 to 65+
@@ -236,6 +237,21 @@ Play Console → App content:
 - [ ] **Government app** — No
 - [ ] **Financial features** — No (calculator is a general tool, not a financial service)
 - [ ] **Health apps** — No
+
+---
+
+## 🔐 Sign-In Options (Your app supports)
+
+| Sign-in Type | Status | Play Console Section |
+|--------------|--------|---------------------|
+| **Google Sign-In** | ✅ Optional | No test credentials needed — Guest mode covers reviewer testing |
+| **Guest Mode** | ✅ Default | Reviewer will use this — no restrictions to declare |
+| **Email/Password** | ❌ Not implemented | N/A |
+| **Phone OTP** | ❌ Not implemented | N/A |
+
+**Recommended App Access answer**: *"All functionality is available without any special access"*
+
+This is the fastest-review path — reviewers don't need Google credentials, and mandatory-login apps often face 10-14 day reviews vs. 3-7 days for open apps.
 
 ---
 
