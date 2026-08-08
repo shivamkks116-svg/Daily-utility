@@ -1,6 +1,6 @@
 """DailyHub AI Backend - FastAPI + MongoDB + Emergent Auth + Gemini 3 Flash."""
 from fastapi import FastAPI, APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -922,6 +922,49 @@ async def currency_rates(base: str = "USD", authorization: Optional[str] = Heade
     except Exception:
         logger.exception("currency error")
         raise HTTPException(502, "Rate service unavailable")
+
+
+# ---------------------- Public legal pages (Play Store requirement) ----------------------
+_STATIC_DIR = ROOT_DIR / "static"
+
+
+def _read_static(name: str) -> str:
+    try:
+        return (_STATIC_DIR / name).read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return "<!doctype html><html><body><h1>Not Found</h1></body></html>"
+
+
+# Root-level routes (work when the backend is directly reachable, e.g. on emergent.host domain).
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+async def privacy_html():
+    return HTMLResponse(_read_static("privacy.html"))
+
+
+@app.get("/privacy.html", response_class=HTMLResponse, include_in_schema=False)
+async def privacy_html_alias():
+    return HTMLResponse(_read_static("privacy.html"))
+
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+async def terms_html():
+    return HTMLResponse(_read_static("terms.html"))
+
+
+@app.get("/terms.html", response_class=HTMLResponse, include_in_schema=False)
+async def terms_html_alias():
+    return HTMLResponse(_read_static("terms.html"))
+
+
+# API-prefixed aliases (guaranteed to route through /api/* kubernetes ingress rules).
+@api_router.get("/legal/privacy", response_class=HTMLResponse, include_in_schema=False)
+async def api_privacy_html():
+    return HTMLResponse(_read_static("privacy.html"))
+
+
+@api_router.get("/legal/terms", response_class=HTMLResponse, include_in_schema=False)
+async def api_terms_html():
+    return HTMLResponse(_read_static("terms.html"))
 
 
 # ---------------------- Startup ----------------------
