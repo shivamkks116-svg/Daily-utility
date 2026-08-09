@@ -45,6 +45,29 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   const backgroundedAtRef = useRef<number | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const autoTriggeredRef = useRef<boolean>(false);
+  // Ref mirrors bioBusy for read-only access inside callbacks so useCallback's
+  // identity doesn't change on every busy transition (avoids useEffect thrash).
+  const bioBusyRef = useRef<boolean>(false);
+
+  // Universal unlock helper — defers state commit to the next event-loop tick
+  // AND the next animation frame. This decouples our React state update from
+  // the native biometric/keyboard UI dismissal so devices with quirky OEM
+  // window managers (Realme/OnePlus/OPPO/Vivo/Xiaomi MIUI) reliably refresh.
+  const commitUnlock = useCallback(() => {
+    // Success haptic — confirms unlock even before UI transitions.
+    if (Platform.OS === "android") Vibration.vibrate(15);
+    // Two-step deferral: setTimeout(0) escapes the current microtask queue,
+    // requestAnimationFrame ensures Android/iOS window has painted before we
+    // unmount the lock overlay.
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        setLocked(false);
+        setPinBuf("");
+        setBioErr(null);
+        autoTriggeredRef.current = false;
+      });
+    }, 0);
+  }, []);
 
   const maybeLock = useCallback(async () => {
     if (SKIP_NEXT_LOCK) {
@@ -88,22 +111,24 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   }, [maybeLock]);
 
   const tryBiometric = useCallback(async () => {
-    if (bioBusy) return;
+    if (bioBusyRef.current) return;
+    bioBusyRef.current = true;
     setBioBusy(true);
     setBioErr(null);
     const reason = bio.hasFace
       ? "Unlock DailyHub AI"
       : "Place your finger to unlock DailyHub AI";
     const res = await biometricPrompt(reason);
+    bioBusyRef.current = false;
     setBioBusy(false);
     if (res.success) {
-      setLocked(false);
-      setPinBuf("");
+      // Universal deferred unlock — reliable across all Android OEMs.
+      commitUnlock();
       return;
     }
     // Show a friendly message and let the user retry via the button or PIN.
     setBioErr(biometricErrorMessage(res.error));
-  }, [bio.hasFace, bioBusy]);
+  }, [bio.hasFace, commitUnlock]);
 
   // Auto-trigger biometric ONCE when lock screen appears (only if available).
   useEffect(() => {
@@ -125,8 +150,8 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
       if (next.length >= 4) {
         const ok = await verifyPin(next);
         if (ok) {
-          setLocked(false);
-          setPinBuf("");
+          // Universal deferred unlock — same path as biometric success.
+          commitUnlock();
         } else {
           // wrong 4-digit PIN — reset with feedback
           if (Platform.OS === "android") Vibration.vibrate(80);
@@ -138,7 +163,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [pinBuf, locked],
+    [pinBuf, locked, commitUnlock],
   );
 
   const backspace = useCallback(() => setPinBuf((b) => b.slice(0, -1)), []);
