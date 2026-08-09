@@ -1,7 +1,8 @@
 // App Lock helper — PIN (secure) + optional biometric.
-// PIN is stored via SecureStore as a lightweight hash (djb2). We are not aiming for
-// bank-grade security here — the goal is to prevent casual snooping when someone
-// picks up an unlocked phone. Biometric prompt (when available) is preferred.
+// PIN is stored via SecureStore as a lightweight hash (djb2). We are not aiming
+// for bank-grade security here — the goal is to prevent casual snooping when
+// someone picks up an unlocked phone. Biometric prompt (when available) is
+// preferred, with our own PIN pad as a reliable fallback.
 import * as SecureStore from "expo-secure-store";
 import * as LocalAuthentication from "expo-local-authentication";
 
@@ -55,7 +56,7 @@ export async function verifyPin(pin: string): Promise<boolean> {
 export type BiometricSupport = {
   hasHardware: boolean;
   isEnrolled: boolean;
-  types: number[];        // supported auth types (fingerprint = 1, facial = 2, iris = 3)
+  types: number[];
   hasFingerprint: boolean;
   hasFace: boolean;
   available: boolean;
@@ -63,11 +64,14 @@ export type BiometricSupport = {
 
 export async function checkBiometrics(): Promise<BiometricSupport> {
   try {
-    const [hasHardware, isEnrolled, types] = await Promise.all([
-      LocalAuthentication.hasHardwareAsync(),
-      LocalAuthentication.isEnrolledAsync(),
-      LocalAuthentication.supportedAuthenticationTypesAsync(),
-    ]);
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    let types: number[] = [];
+    try {
+      types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+    } catch {
+      types = [];
+    }
     const hasFingerprint = types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT);
     const hasFace = types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION);
     return {
@@ -87,27 +91,20 @@ export type BiometricResult =
   | { success: true }
   | { success: false; error: string; canRetry: boolean };
 
-// Rich biometric prompt that surfaces the exact failure reason. Callers can
-// display a helpful message and decide whether to auto-retry.
+// SIMPLE, defensive biometric prompt — no cancelAuthenticate calls (they crash
+// on some OEMs), no fancy racing. Just a plain authenticateAsync wrapped in a
+// try/catch that never throws. Returns a discriminated union so callers can
+// display a friendly message.
 export async function biometricPrompt(reason = "Unlock DailyHub AI"): Promise<BiometricResult> {
   try {
-    // On some Android OEMs (Xiaomi/OnePlus/Realme) `disableDeviceFallback: true`
-    // causes the biometric sheet to close instantly if the user hasn't set a
-    // device screen lock, or if the OEM's HAL has quirks. Leaving it false lets
-    // Android show its native "Use PIN/pattern" fallback if biometric hardware
-    // is temporarily unavailable — the app then falls back to our own PIN pad
-    // via the `res.error` we surface below.
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: reason,
       cancelLabel: "Use PIN",
       fallbackLabel: "Use PIN",
-      disableDeviceFallback: false,
-      requireConfirmation: false,
+      disableDeviceFallback: true,
     });
-    if (res.success) return { success: true };
-    // res.error values: "user_cancel", "system_cancel", "user_fallback", "lockout",
-    // "app_cancel", "invalid_context", "not_enrolled", "not_available", "unknown"
-    const err = (res as { error?: string; warning?: string }).error || "unknown";
+    if (res && res.success === true) return { success: true };
+    const err = (res as { error?: string } | undefined)?.error || "unknown";
     const canRetry = !["lockout", "lockout_permanent", "not_enrolled", "not_available", "user_cancel", "user_fallback"].includes(err);
     return { success: false, error: err, canRetry };
   } catch (e: unknown) {
@@ -123,18 +120,18 @@ export function biometricErrorMessage(err: string): string {
     case "user_fallback":
     case "app_cancel":
     case "system_cancel":
-      return "Fingerprint cancelled. Please enter your PIN instead.";
+      return "Fingerprint cancelled. Enter your PIN below.";
     case "lockout":
-      return "Too many failed attempts. Please enter your PIN.";
+      return "Too many failed attempts. Enter your PIN.";
     case "lockout_permanent":
-      return "Fingerprint is locked. Please unlock your device with PIN.";
+      return "Fingerprint locked. Enter your PIN.";
     case "not_enrolled":
-      return "No fingerprint enrolled on this device. Please use PIN.";
+      return "No fingerprint enrolled. Enter your PIN.";
     case "not_available":
-      return "Fingerprint sensor not available. Please use PIN.";
+      return "Fingerprint sensor unavailable. Enter your PIN.";
     case "authentication_failed":
-      return "Fingerprint didn't match. Try again or use PIN.";
+      return "Fingerprint didn't match. Try again or enter PIN.";
     default:
-      return "Fingerprint failed. Please use PIN.";
+      return "Fingerprint failed. Enter your PIN below.";
   }
 }

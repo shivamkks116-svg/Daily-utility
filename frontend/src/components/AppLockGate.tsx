@@ -134,10 +134,10 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (locked && bio.available && !autoTriggeredRef.current) {
       autoTriggeredRef.current = true;
-      // Slight delay so the lock UI renders first — avoids jank on cold start.
+      // Longer delay so the lock UI fully paints before native prompt opens.
       const t = setTimeout(() => {
         tryBiometric();
-      }, 350);
+      }, 600);
       return () => clearTimeout(t);
     }
   }, [locked, bio.available, tryBiometric]);
