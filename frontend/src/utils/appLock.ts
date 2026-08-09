@@ -55,28 +55,86 @@ export async function verifyPin(pin: string): Promise<boolean> {
 export type BiometricSupport = {
   hasHardware: boolean;
   isEnrolled: boolean;
+  types: number[];        // supported auth types (fingerprint = 1, facial = 2, iris = 3)
+  hasFingerprint: boolean;
+  hasFace: boolean;
   available: boolean;
 };
 
 export async function checkBiometrics(): Promise<BiometricSupport> {
   try {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    return { hasHardware, isEnrolled, available: hasHardware && isEnrolled };
+    const [hasHardware, isEnrolled, types] = await Promise.all([
+      LocalAuthentication.hasHardwareAsync(),
+      LocalAuthentication.isEnrolledAsync(),
+      LocalAuthentication.supportedAuthenticationTypesAsync(),
+    ]);
+    const hasFingerprint = types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT);
+    const hasFace = types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION);
+    return {
+      hasHardware,
+      isEnrolled,
+      types,
+      hasFingerprint,
+      hasFace,
+      available: hasHardware && isEnrolled,
+    };
   } catch {
-    return { hasHardware: false, isEnrolled: false, available: false };
+    return { hasHardware: false, isEnrolled: false, types: [], hasFingerprint: false, hasFace: false, available: false };
   }
 }
 
-export async function biometricPrompt(reason = "Unlock DailyHub AI"): Promise<boolean> {
+export type BiometricResult =
+  | { success: true }
+  | { success: false; error: string; canRetry: boolean };
+
+// Rich biometric prompt that surfaces the exact failure reason. Callers can
+// display a helpful message and decide whether to auto-retry.
+export async function biometricPrompt(reason = "Unlock DailyHub AI"): Promise<BiometricResult> {
   try {
+    // On some Android OEMs (Xiaomi/OnePlus/Realme) `disableDeviceFallback: true`
+    // causes the biometric sheet to close instantly if the user hasn't set a
+    // device screen lock, or if the OEM's HAL has quirks. Leaving it false lets
+    // Android show its native "Use PIN/pattern" fallback if biometric hardware
+    // is temporarily unavailable — the app then falls back to our own PIN pad
+    // via the `res.error` we surface below.
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: reason,
       cancelLabel: "Use PIN",
-      disableDeviceFallback: true,
+      fallbackLabel: "Use PIN",
+      disableDeviceFallback: false,
+      requireConfirmation: false,
     });
-    return res.success === true;
-  } catch {
-    return false;
+    if (res.success) return { success: true };
+    // res.error values: "user_cancel", "system_cancel", "user_fallback", "lockout",
+    // "app_cancel", "invalid_context", "not_enrolled", "not_available", "unknown"
+    const err = (res as { error?: string; warning?: string }).error || "unknown";
+    const canRetry = !["lockout", "lockout_permanent", "not_enrolled", "not_available", "user_cancel", "user_fallback"].includes(err);
+    return { success: false, error: err, canRetry };
+  } catch (e: unknown) {
+    const msg = (e as { message?: string } | null)?.message || "unknown";
+    return { success: false, error: msg, canRetry: true };
+  }
+}
+
+// Human-friendly error message for a biometric failure code.
+export function biometricErrorMessage(err: string): string {
+  switch (err) {
+    case "user_cancel":
+    case "user_fallback":
+    case "app_cancel":
+    case "system_cancel":
+      return "Fingerprint cancelled. Please enter your PIN instead.";
+    case "lockout":
+      return "Too many failed attempts. Please enter your PIN.";
+    case "lockout_permanent":
+      return "Fingerprint is locked. Please unlock your device with PIN.";
+    case "not_enrolled":
+      return "No fingerprint enrolled on this device. Please use PIN.";
+    case "not_available":
+      return "Fingerprint sensor not available. Please use PIN.";
+    case "authentication_failed":
+      return "Fingerprint didn't match. Try again or use PIN.";
+    default:
+      return "Fingerprint failed. Please use PIN.";
   }
 }

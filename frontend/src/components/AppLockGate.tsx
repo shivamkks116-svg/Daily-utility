@@ -13,7 +13,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { getAppLock } from "@/src/utils/settings";
-import { biometricPrompt, checkBiometrics, isPinSet, verifyPin } from "@/src/utils/appLock";
+import {
+  biometricErrorMessage,
+  biometricPrompt,
+  checkBiometrics,
+  isPinSet,
+  verifyPin,
+  type BiometricSupport,
+} from "@/src/utils/appLock";
 
 // Global helper used elsewhere (e.g., right after user enables App Lock) to skip
 // the immediate lock prompt for the current session.
@@ -29,10 +36,15 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false);
   const [pinBuf, setPinBuf] = useState("");
   const [hasPin, setHasPin] = useState(false);
-  const [bioAvailable, setBioAvailable] = useState(false);
+  const [bio, setBio] = useState<BiometricSupport>({
+    hasHardware: false, isEnrolled: false, types: [], hasFingerprint: false, hasFace: false, available: false,
+  });
   const [shake, setShake] = useState(false);
+  const [bioErr, setBioErr] = useState<string | null>(null);
+  const [bioBusy, setBioBusy] = useState(false);
   const backgroundedAtRef = useRef<number | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+  const autoTriggeredRef = useRef<boolean>(false);
 
   const maybeLock = useCallback(async () => {
     if (SKIP_NEXT_LOCK) {
@@ -44,8 +56,10 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     const pinReady = await isPinSet();
     if (!pinReady) return; // no PIN configured -> nothing to unlock against
     setHasPin(pinReady);
-    const bio = await checkBiometrics();
-    setBioAvailable(bio.available);
+    const bioInfo = await checkBiometrics();
+    setBio(bioInfo);
+    setBioErr(null);
+    autoTriggeredRef.current = false;
     setLocked(true);
     setPinBuf("");
   }, []);
@@ -74,18 +88,34 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   }, [maybeLock]);
 
   const tryBiometric = useCallback(async () => {
-    const ok = await biometricPrompt("Unlock DailyHub AI");
-    if (ok) setLocked(false);
-  }, []);
+    if (bioBusy) return;
+    setBioBusy(true);
+    setBioErr(null);
+    const reason = bio.hasFace
+      ? "Unlock DailyHub AI"
+      : "Place your finger to unlock DailyHub AI";
+    const res = await biometricPrompt(reason);
+    setBioBusy(false);
+    if (res.success) {
+      setLocked(false);
+      setPinBuf("");
+      return;
+    }
+    // Show a friendly message and let the user retry via the button or PIN.
+    setBioErr(biometricErrorMessage(res.error));
+  }, [bio.hasFace, bioBusy]);
 
-  // Auto-trigger biometric when lock screen shows.
+  // Auto-trigger biometric ONCE when lock screen appears (only if available).
   useEffect(() => {
-    if (locked && bioAvailable) {
-      // small delay so the transition doesn't clash
-      const t = setTimeout(() => tryBiometric(), 400);
+    if (locked && bio.available && !autoTriggeredRef.current) {
+      autoTriggeredRef.current = true;
+      // Slight delay so the lock UI renders first — avoids jank on cold start.
+      const t = setTimeout(() => {
+        tryBiometric();
+      }, 350);
       return () => clearTimeout(t);
     }
-  }, [locked, bioAvailable, tryBiometric]);
+  }, [locked, bio.available, tryBiometric]);
 
   const pressDigit = useCallback(
     async (d: string) => {
@@ -123,7 +153,17 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
             <Ionicons name="lock-closed" size={30} color={colors.onBrandPrimary} />
           </View>
           <Text style={styles.title}>DailyHub AI</Text>
-          <Text style={styles.subtitle}>{hasPin ? "Enter your PIN to unlock" : "App Lock not configured"}</Text>
+          <Text style={styles.subtitle}>
+            {!hasPin
+              ? "App Lock not configured"
+              : bio.available
+              ? bio.hasFingerprint
+                ? "Use your fingerprint or PIN to unlock"
+                : bio.hasFace
+                ? "Use face unlock or PIN"
+                : "Use biometrics or PIN"
+              : "Enter your PIN to unlock"}
+          </Text>
         </View>
 
         <View style={styles.middle}>
@@ -134,11 +174,35 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
             })}
           </View>
 
-          {bioAvailable ? (
-            <Pressable onPress={tryBiometric} style={styles.bioBtn} testID="lock-biometric">
-              <Ionicons name="finger-print" size={18} color={colors.brandPrimary} />
-              <Text style={styles.bioText}>Use biometrics</Text>
+          {bio.available ? (
+            <Pressable
+              onPress={tryBiometric}
+              disabled={bioBusy}
+              style={[styles.bioBtn, bioBusy && { opacity: 0.6 }]}
+              testID="lock-biometric"
+              accessibilityLabel="Use fingerprint to unlock"
+            >
+              <Ionicons
+                name={bio.hasFace && !bio.hasFingerprint ? "scan-outline" : "finger-print"}
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <Text style={styles.bioText}>
+                {bioBusy
+                  ? "Waiting for scan…"
+                  : bio.hasFingerprint
+                  ? "Use fingerprint"
+                  : bio.hasFace
+                  ? "Use face unlock"
+                  : "Use biometrics"}
+              </Text>
             </Pressable>
+          ) : null}
+
+          {bioErr ? (
+            <Text style={styles.bioErr} testID="lock-bio-error">
+              {bioErr}
+            </Text>
           ) : null}
         </View>
 
@@ -238,6 +302,13 @@ const styles = StyleSheet.create({
     color: colors.brandPrimary,
     fontWeight: fontWeight.bold,
     fontSize: fontSize.sm,
+  },
+  bioErr: {
+    color: colors.error,
+    fontSize: fontSize.sm,
+    marginTop: spacing.sm,
+    textAlign: "center",
+    paddingHorizontal: spacing.xl,
   },
   pad: {
     paddingHorizontal: spacing.xl,

@@ -183,7 +183,7 @@ export default function ProfileScreen() {
               const okBio = await import("@/src/utils/appLock").then((m) =>
                 m.biometricPrompt("Enable fingerprint unlock"),
               );
-              if (okBio) showToast("Fingerprint unlock enabled ✓");
+              if (okBio.success) showToast("Fingerprint unlock enabled ✓");
               else showToast("App Lock enabled ✓ (PIN only)");
             },
           },
