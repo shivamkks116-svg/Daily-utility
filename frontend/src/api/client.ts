@@ -8,8 +8,10 @@ const ENV_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 const BACKEND = (ENV_BACKEND && ENV_BACKEND.trim().length > 0 ? ENV_BACKEND : PROD_BACKEND_URL) as string;
 export const API_BASE = `${BACKEND}/api`;
 export const AUTH_TOKEN_KEY = "dailyhub_session_token";
+export const AUTH_PROVIDER_KEY = "dailyhub_auth_provider"; // "google" | "guest"
 
 let _tokenCache: string | null | undefined;
+let _providerCache: string | null | undefined;
 
 export async function getToken(): Promise<string | null> {
   if (_tokenCache !== undefined) return _tokenCache;
@@ -22,6 +24,19 @@ export async function setToken(token: string | null) {
   _tokenCache = token;
   if (token) await storage.secureSet(AUTH_TOKEN_KEY, token);
   else await storage.secureRemove(AUTH_TOKEN_KEY);
+}
+
+export async function getProvider(): Promise<string | null> {
+  if (_providerCache !== undefined) return _providerCache;
+  const p = await storage.secureGet<string>(AUTH_PROVIDER_KEY, "");
+  _providerCache = p || null;
+  return _providerCache;
+}
+
+export async function setProvider(provider: "google" | "guest" | null) {
+  _providerCache = provider;
+  if (provider) await storage.secureSet(AUTH_PROVIDER_KEY, provider);
+  else await storage.secureRemove(AUTH_PROVIDER_KEY);
 }
 
 type Opts = { method?: string; body?: unknown; auth?: boolean };
@@ -71,13 +86,22 @@ async function rawFetch(path: string, opts: Opts, token: string | null) {
 
 export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
   const { auth = true } = opts;
-  let token = auth ? await getToken() : null;
+  const initialToken = auth ? await getToken() : null;
+  let token = initialToken;
   let res = await rawFetch(path, opts, token);
 
-  // Self-healing: if 401 on an authenticated call, try to bootstrap a guest
-  // session ONCE and retry the original request transparently.
-  if (auth && res.status === 401) {
-    await setToken(null);
+  // Self-healing: ONLY bootstrap a fresh guest session when the caller was
+  // truly anonymous (no token in storage) and the backend rejected the call.
+  // We must NEVER silently overwrite an existing signed-in session (Google or
+  // guest) with a brand-new guest identity — that used to cause the bug where
+  // clearing the app from recent apps changed the visible name to "Guest".
+  //
+  // Additionally, /auth/me is a pure identity probe: if it 401s we surface the
+  // error so AuthContext can route the user to the login screen instead of
+  // masking the failure with a new guest.
+  const isAuthMe = path === "/auth/me";
+  const canSelfHeal = auth && res.status === 401 && !initialToken && !isAuthMe;
+  if (canSelfHeal) {
     const fresh = await bootstrapGuestSession();
     if (fresh) {
       token = fresh;
@@ -86,7 +110,12 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   }
 
   if (res.status === 401) {
-    await setToken(null);
+    // Clear the (now-invalid) token so subsequent app boots don't keep hitting
+    // the same dead session. Do NOT create a replacement session here.
+    if (initialToken) {
+      await setToken(null);
+      await setProvider(null);
+    }
     throw new Error("Unauthorized");
   }
   const text = await res.text();
