@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Delete Your Account · DailyHub AI</title>
+  <meta name="description" content="Request deletion of your DailyHub AI account and associated data." />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1310;
+      --card: #171c19;
+      --text: #E8EFEA;
+      --muted: #9AAF9F;
+      --accent: #5EBA8B;
+      --danger: #E86A6A;
+      --border: #26302B;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    header {
+      background: linear-gradient(135deg, #E86A6A 0%, #A83D3D 100%);
+      padding: 40px 24px 32px;
+      text-align: center;
+    }
+    header .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    header h1 { margin: 12px 0 4px; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+    header p { margin: 0; opacity: 0.9; font-size: 14px; }
+    main { max-width: 720px; margin: -20px auto 40px; padding: 0 20px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 24px;
+      margin-bottom: 20px;
+    }
+    h2 { color: var(--text); font-size: 18px; margin: 0 0 12px; }
+    p, li { color: var(--text); font-size: 15px; }
+    ul { padding-left: 20px; }
+    li { margin: 6px 0; }
+    .kept-list li { color: var(--muted); }
+    label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 6px; }
+    input[type=email], textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 15px;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 90px; }
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 16px 0 0;
+    }
+    .checkbox-row input { margin-top: 4px; }
+    .checkbox-row label { margin: 0; color: var(--text); font-size: 14px; }
+    button.submit {
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: var(--danger);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    button.submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.submit:hover:not(:disabled) { filter: brightness(1.05); }
+    .success {
+      background: rgba(94, 186, 139, 0.15);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 14px;
+      border-radius: 12px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .error {
+      background: rgba(232, 106, 106, 0.15);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 14px;
+      border-radius: 12px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .contact-box {
+      background: rgba(94, 186, 139, 0.1);
+      border: 1px solid rgba(94, 186, 139, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 12px;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 24px 20px 32px;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    .warn-highlight {
+      background: rgba(232, 106, 106, 0.1);
+      border-left: 4px solid var(--danger);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="badge">⚠️ ACCOUNT DELETION</span>
+    <h1>Delete Your Account</h1>
+    <p>DailyHub AI · Developed by Shivam Innovation</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>What happens when you delete your account?</h2>
+      <p>
+        We take your privacy seriously. When you submit a deletion request, we will
+        <strong>permanently erase</strong> the following within <strong>30 days</strong>:
+      </p>
+      <ul>
+        <li>Your account (email, name, profile picture)</li>
+        <li>All notes, todos, habits, focus sessions, and expenses</li>
+        <li>Your AI chat history and message content</li>
+        <li>Any files or images you attached in-app</li>
+        <li>Session tokens and cached data on our servers</li>
+      </ul>
+
+      <div class="warn-highlight">
+        ⚠️ <strong>This action is irreversible.</strong> Once deleted, the data cannot be recovered.
+      </div>
+
+      <h2 style="margin-top: 24px;">What we may keep (anonymized / legal)</h2>
+      <ul class="kept-list">
+        <li>Anonymized crash logs and usage aggregates (no personal identifiers)</li>
+        <li>Records required by law (up to 6 months) — e.g. payment receipts if any</li>
+        <li>Backups on encrypted archival storage (auto-purged within 60 days)</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Alternative: In-App Deletion</h2>
+      <p>
+        You can also delete your data directly from the DailyHub AI app:
+      </p>
+      <ol style="padding-left: 20px;">
+        <li>Open the DailyHub AI app on your phone</li>
+        <li>Go to <strong>Profile</strong> tab (bottom right)</li>
+        <li>Scroll to the bottom and tap <strong>Sign Out</strong></li>
+        <li>Then email us at <a href="mailto:support@shivaminnovation.dev?subject=Delete%20My%20Account" style="color: var(--accent);">support@shivaminnovation.dev</a> with subject <em>"Delete My Account"</em></li>
+      </ol>
+      <p style="color: var(--muted); font-size: 14px;">
+        Guest users (who never signed in with Google) — your data lives only on your device. Simply uninstall the app or clear app data from Android Settings to delete everything.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Submit deletion request</h2>
+      <p style="color: var(--muted);">Fill in this form and we will process your request within 30 days.</p>
+
+      <form id="deletion-form">
+        <label for="email">Email address associated with your DailyHub AI account *</label>
+        <input type="email" id="email" name="email" required placeholder="you@example.com" autocomplete="email" />
+
+        <label for="reason">Reason for deletion (optional)</label>
+        <select id="reason" name="reason">
+          <option value="">-- Select a reason --</option>
+          <option value="not_using">I no longer use the app</option>
+          <option value="privacy">Privacy concerns</option>
+          <option value="switched_app">Switched to a different app</option>
+          <option value="duplicate_account">I have a duplicate account</option>
+          <option value="other">Other</option>
+        </select>
+
+        <label for="notes">Additional notes (optional)</label>
+        <textarea id="notes" name="notes" placeholder="Anything else you'd like us to know?"></textarea>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="confirm1" required />
+          <label for="confirm1">I understand that all my data will be permanently deleted and cannot be recovered.</label>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="confirm2" required />
+          <label for="confirm2">I am the rightful owner of this email address / account.</label>
+        </div>
+
+        <button type="submit" class="submit" id="submit-btn">Submit Deletion Request</button>
+
+        <div id="success-msg" class="success" style="display:none;">
+          ✅ Thank you. Your deletion request has been received. We will send a confirmation email within 24 hours and complete the deletion within 30 days.
+        </div>
+        <div id="error-msg" class="error" style="display:none;"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Direct contact</h2>
+      <div class="contact-box">
+        Prefer email? Send us a request directly:<br /><br />
+        📧 <a href="mailto:support@shivaminnovation.dev?subject=Delete%20My%20Account" style="color: var(--accent);">support@shivaminnovation.dev</a><br />
+        📌 Subject line: <strong>Delete My Account</strong><br />
+        ✏️ Include: your account email and reason (optional)
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    © 2026 Shivam Innovation · <a href="/api/legal/privacy">Privacy Policy</a> · <a href="/api/legal/terms">Terms</a>
+  </footer>
+
+  <script>
+    const form = document.getElementById('deletion-form');
+    const btn = document.getElementById('submit-btn');
+    const okBox = document.getElementById('success-msg');
+    const errBox = document.getElementById('error-msg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      okBox.style.display = 'none';
+      errBox.style.display = 'none';
+      btn.disabled = true;
+      btn.innerText = 'Submitting...';
+      const data = {
+        email: document.getElementById('email').value.trim(),
+        reason: document.getElementById('reason').value,
+        notes: document.getElementById('notes').value.trim(),
+      };
+      try {
+        const res = await fetch('/api/legal/account-deletion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error('Server error ' + res.status);
+        okBox.style.display = 'block';
+        form.reset();
+        btn.innerText = 'Request received ✓';
+      } catch (err) {
+        errBox.innerText = 'Sorry, we could not submit your request right now. Please email support@shivaminnovation.dev with subject "Delete My Account".';
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btn.innerText = 'Submit Deletion Request';
+      }
+    });
+  </script>
+</body>
+</html>

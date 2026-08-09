@@ -967,6 +967,51 @@ async def api_terms_html():
     return HTMLResponse(_read_static("terms.html"))
 
 
+# Account deletion — Google Play mandatory URL for apps with user accounts.
+@app.get("/account-deletion", response_class=HTMLResponse, include_in_schema=False)
+async def account_deletion_html():
+    return HTMLResponse(_read_static("account-deletion.html"))
+
+
+@app.get("/account-deletion.html", response_class=HTMLResponse, include_in_schema=False)
+async def account_deletion_html_alias():
+    return HTMLResponse(_read_static("account-deletion.html"))
+
+
+@api_router.get("/legal/account-deletion", response_class=HTMLResponse, include_in_schema=False)
+async def api_account_deletion_html():
+    return HTMLResponse(_read_static("account-deletion.html"))
+
+
+class DeletionRequestIn(BaseModel):
+    email: str
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@api_router.post("/legal/account-deletion")
+async def api_submit_deletion(payload: DeletionRequestIn, request: Request):
+    """Record a public account-deletion request. Admin/support processes within 30 days."""
+    email = (payload.email or "").strip().lower()
+    if "@" not in email or "." not in email or len(email) > 254:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "reason": (payload.reason or "").strip()[:100] or None,
+        "notes": (payload.notes or "").strip()[:1000] or None,
+        "created_at": utcnow(),
+        "status": "pending",
+        "user_agent": (request.headers.get("user-agent") or "")[:300],
+        "ip": (request.headers.get("x-forwarded-for") or request.client.host if request.client else "")[:64],
+    }
+    try:
+        await db.deletion_requests.insert_one({**doc})
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail="Could not save request. Please email support@shivaminnovation.dev.")
+    return {"status": "received", "message": "Your deletion request has been received. We will confirm within 24 hours and complete deletion within 30 days.", "request_id": doc["id"]}
+
+
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 

@@ -20,6 +20,7 @@ Har section pe Play Console jo poochega, uska EXACT answer diya gaya hai. Copy-p
 | **Min SDK** | 24 (Android 7.0) |
 | **Privacy Policy URL** | `https://daily-utility-ai.emergent.host/api/legal/privacy` |
 | **Terms URL** | `https://daily-utility-ai.emergent.host/api/legal/terms` |
+| **Account Deletion URL** | `https://daily-utility-ai.emergent.host/api/legal/account-deletion` |
 | **Support Email** | `support@shivaminnovation.dev` |
 | **Website** | `https://shivaminnovation.dev` |
 
@@ -72,6 +73,30 @@ Ye sab sections mein aapko answer dena hoga. Har ek ka exact answer neeche hai.
 | Field | Answer |
 |-------|--------|
 | Privacy Policy URL | `https://daily-utility-ai.emergent.host/api/legal/privacy` |
+
+Click **Save**.
+
+---
+
+## 3.1b 🗑️ ACCOUNT DELETION URL (⚠️ MANDATORY for apps with sign-in)
+
+**Section**: `App content → App content → Data deletion` (or shows within Data safety section)
+
+Google **requires** all apps that support account creation to provide a web-based deletion mechanism. Aapke DailyHub AI mein Google Sign-In hai, so ye MUST fill karo:
+
+| Field | Answer |
+|-------|--------|
+| **Account deletion URL** | `https://daily-utility-ai.emergent.host/api/legal/account-deletion` |
+
+**Reasoning if asked**:
+```
+DailyHub AI provides two ways to delete account and data:
+1. Web form at the account deletion URL (this page) — users submit their 
+   email and the request is processed within 30 days.
+2. In-app: Profile → Sign Out → email support@shivaminnovation.dev with 
+   subject "Delete My Account". Guest users can simply uninstall to remove 
+   all locally-stored data.
+```
 
 Click **Save**.
 

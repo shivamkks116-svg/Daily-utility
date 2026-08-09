@@ -19,15 +19,16 @@ After you deploy the backend via Emergent's **"Publish"** button, use these publ
 |-------|-------|
 | **Privacy Policy URL** ✅ | `https://daily-utility-ai.emergent.host/api/legal/privacy` |
 | **Terms of Service URL** | `https://daily-utility-ai.emergent.host/api/legal/terms` |
+| **Account Deletion URL** ⚠️ MANDATORY | `https://daily-utility-ai.emergent.host/api/legal/account-deletion` |
 | **Website** | `https://shivaminnovation.dev` |
 | **Support Email** | `support@shivaminnovation.dev` |
 | **Support Phone (optional)** | leave blank |
 
-> **Important**: Use the `/api/legal/*` variants — these are guaranteed to be served through Emergent's ingress. The bare `/privacy` and `/terms` variants also exist as fallbacks but the `/api/legal/*` form is production-safe.
+> **Important**: Use the `/api/legal/*` variants — these are guaranteed to be served through Emergent's ingress. Bare `/privacy`, `/terms`, `/account-deletion` variants also exist as fallbacks.
 
-Both URLs are Play-Store compliant (mobile-responsive, dark theme, GDPR/CCPA/DPDP sections included).
+All 3 URLs are Play-Store compliant (mobile-responsive, dark theme, GDPR/CCPA/DPDP sections included).
 
-> 🚀 **Before submission**: Click "Publish" in Emergent UI to redeploy with the new legal routes. Once deployed, visit the Privacy URL in a browser to confirm it renders correctly.
+> 🚀 **Before submission**: Click "Publish" in Emergent UI to redeploy with the new legal routes. Once deployed, visit each URL in a browser to confirm it renders correctly.
 
 ---
 
