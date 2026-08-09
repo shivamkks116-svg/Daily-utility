@@ -61,6 +61,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   // Uses functional setState (safe against stale closures) AND fires the update
   // in two ticks to defeat OEM window-manager race conditions.
   const commitUnlock = useCallback(() => {
+    console.log("[AppLock] commitUnlock() called — unlocking now");
     if (Platform.OS === "android") Vibration.vibrate(15);
     // Update refs synchronously so any concurrent AppState/lock triggers see
     // that we are unlocked and skip re-locking.
@@ -75,32 +76,47 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     setPinBuf(() => "");
     setBioErr(() => null);
     setBioBusy(() => false);
+    console.log("[AppLock] setLocked(false) dispatched (attempt 1/3)");
     // Belt-and-suspenders: schedule a second commit on the next event-loop
     // tick and animation frame in case the first one was batched during a
     // native transition (Realme/Poco/OnePlus quirk).
     setTimeout(() => {
       setLocked(() => false);
       setPinBuf(() => "");
+      console.log("[AppLock] setLocked(false) dispatched (attempt 2/3)");
       requestAnimationFrame(() => {
         setLocked(() => false);
+        console.log("[AppLock] setLocked(false) dispatched (attempt 3/3)");
       });
     }, 0);
   }, []);
 
   const maybeLock = useCallback(async () => {
+    console.log("[AppLock] maybeLock() called; sessionUnlocked=", sessionUnlockedRef.current, "since unlock=", Date.now() - lastUnlockedAtRef.current, "ms");
     if (SKIP_NEXT_LOCK) {
+      console.log("[AppLock] SKIP_NEXT_LOCK true, skipping lock");
       SKIP_NEXT_LOCK = false;
       return;
     }
-    // Don't re-lock within 1s of a successful unlock (guards against the
-    // biometric-prompt-overlay AppState race).
-    if (Date.now() - lastUnlockedAtRef.current < 1000) return;
+    // Don't re-lock within 3s of a successful unlock (guards against the
+    // biometric-prompt-overlay AppState race). 3s covers slow OEM animations.
+    if (Date.now() - lastUnlockedAtRef.current < 3000) {
+      console.log("[AppLock] Debounce active — skipping re-lock within 3s of unlock");
+      return;
+    }
     const enabled = await getAppLock();
-    if (!enabled) return;
+    if (!enabled) {
+      console.log("[AppLock] App Lock disabled in prefs — skipping");
+      return;
+    }
     const pinReady = await isPinSet();
-    if (!pinReady) return;
+    if (!pinReady) {
+      console.log("[AppLock] No PIN set — skipping");
+      return;
+    }
     setHasPin(pinReady);
     const bioInfo = await checkBiometrics();
+    console.log("[AppLock] Biometric support:", bioInfo);
     setBio(bioInfo);
     setBioErr(null);
     autoTriggeredRef.current = false;
@@ -108,6 +124,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     sessionUnlockedRef.current = false;
     setLocked(true);
     setPinBuf("");
+    console.log("[AppLock] setLocked(true) — showing lock screen");
   }, []);
 
   // Initial mount — attempt lock right away if enabled.
@@ -120,12 +137,15 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener("change", async (next: AppStateStatus) => {
       const prev = appState.current;
       appState.current = next;
+      console.log("[AppLock] AppState:", prev, "->", next);
       if (next === "background" || next === "inactive") {
         backgroundedAtRef.current = Date.now();
       } else if (next === "active" && (prev === "background" || prev === "inactive")) {
         const bgAt = backgroundedAtRef.current;
         backgroundedAtRef.current = null;
-        if (bgAt && Date.now() - bgAt >= LOCK_TIMEOUT_MS) {
+        const elapsed = bgAt ? Date.now() - bgAt : 0;
+        console.log("[AppLock] Resumed from", prev, "after", elapsed, "ms");
+        if (bgAt && elapsed >= LOCK_TIMEOUT_MS) {
           maybeLock();
         }
       }
@@ -135,8 +155,15 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
 
   const tryBiometric = useCallback(async () => {
     // Duplicate-prompt guard — refs are read synchronously so no race.
-    if (bioBusyRef.current) return;
-    if (sessionUnlockedRef.current) return;
+    if (bioBusyRef.current) {
+      console.log("[AppLock] tryBiometric: busy, skipping");
+      return;
+    }
+    if (sessionUnlockedRef.current) {
+      console.log("[AppLock] tryBiometric: already unlocked this session, skipping");
+      return;
+    }
+    console.log("[AppLock] tryBiometric: starting biometric prompt");
     bioBusyRef.current = true;
     setBioBusy(true);
     setBioErr(null);
@@ -146,18 +173,21 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
     let res;
     try {
       res = await biometricPrompt(reason);
-    } catch {
+      console.log("[AppLock] biometricPrompt returned:", JSON.stringify(res));
+    } catch (e) {
+      console.log("[AppLock] biometricPrompt threw:", e);
       res = { success: false as const, error: "unknown", canRetry: true };
     }
     bioBusyRef.current = false;
     setBioBusy(false);
     if (res && res.success) {
-      // Immediate synchronous unlock path — guaranteed to fire regardless of
-      // native prompt animation state.
+      console.log("[AppLock] SUCCESS — calling commitUnlock");
       commitUnlock();
       return;
     }
-    setBioErr(biometricErrorMessage(res && !res.success ? res.error : "unknown"));
+    const errCode = res && !res.success ? res.error : "unknown";
+    console.log("[AppLock] FAIL —", errCode);
+    setBioErr(biometricErrorMessage(errCode));
   }, [bio.hasFace, commitUnlock]);
 
   // Auto-trigger biometric ONCE when lock screen appears (only if available).
@@ -201,7 +231,9 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   // Render children when unlocked OR when a session unlock has been recorded
   // (protects against state-update races where `locked` might briefly be true
   // even though we've already unlocked in the current session).
-  if (!locked || sessionUnlockedRef.current) return <>{children}</>;
+  const shouldRender = !locked || sessionUnlockedRef.current;
+  console.log("[AppLock] render: locked=", locked, "sessionUnlocked=", sessionUnlockedRef.current, "→", shouldRender ? "CHILDREN" : "LOCK_SCREEN");
+  if (shouldRender) return <>{children}</>;
 
   return (
     <View style={styles.root} testID="app-lock-screen">
