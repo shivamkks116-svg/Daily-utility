@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState,
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { api, setToken, getToken, setProvider } from "@/src/api/client";
+import { api, setToken, getToken, setProvider, getProvider } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
 
 // Prevent auth session from being blocked on web
@@ -75,18 +75,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   //   * network / transient error -> keep the cached user visible
   const verifySession = useCallback(async () => {
     const t = await getToken();
+    console.log("[Auth] verifySession token?", !!t);
     if (!t) {
       setUser(null);
       await saveUserCache(null);
+      await setProvider(null);
       return;
     }
+
+    // Legacy/corruption guard: if a token exists in SecureStore but there is
+    // NO provider marker, this session was created before the guest-swap fix
+    // (v1 codebase) or was corrupted by that bug. Force sign-out so the user
+    // lands on the login screen and creates a clean session.
+    const savedProvider = await getProvider();
+    console.log("[Auth] savedProvider =", savedProvider);
+    if (!savedProvider) {
+      console.log("[Auth] Legacy/corrupted session detected — forcing sign-out");
+      await setToken(null);
+      await saveUserCache(null);
+      setUser(null);
+      return;
+    }
+
     try {
       const res = await api<{ user: User }>("/auth/me");
-      setUser(res.user);
-      await saveUserCache(res.user);
-      // Keep provider marker consistent with what backend reports.
-      await setProvider(res.user.provider === "google" ? "google" : "guest");
+      const meUser = res.user;
+      console.log("[Auth] /auth/me OK", { provider: meUser?.provider, name: meUser?.name });
+
+      // Corruption guard: if we previously knew this user as Google but the
+      // backend now returns a guest identity, something has swapped the token
+      // under us. Refuse to accept the guest downgrade — sign out cleanly and
+      // let the user re-authenticate.
+      if (savedProvider === "google" && meUser?.provider === "guest") {
+        console.log("[Auth] provider downgrade google->guest detected — signing out");
+        await setToken(null);
+        await setProvider(null);
+        await saveUserCache(null);
+        setUser(null);
+        return;
+      }
+
+      setUser(meUser);
+      await saveUserCache(meUser);
+      await setProvider(meUser.provider === "google" ? "google" : "guest");
     } catch (e: any) {
+      console.log("[Auth] /auth/me FAILED", e?.status, e?.message);
       // Only clear on definite auth failure. Network errors leave the cached
       // user intact so users don't see "Guest" flash on flaky connections /
       // cold starts.
@@ -103,11 +136,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const exchangeSessionId = useCallback(async (sid: string) => {
     if (processedIds.current.has(sid)) return;
     processedIds.current.add(sid);
+    console.log("[Auth] exchangeSessionId — starting");
     const res = await api<{ session_token: string; user: User }>("/auth/session", {
       method: "POST",
       body: { session_id: sid },
       auth: false,
     });
+    console.log("[Auth] exchangeSessionId OK", { name: res.user?.name, provider: res.user?.provider });
     await setToken(res.session_token);
     await setProvider("google");
     await saveUserCache(res.user);
@@ -118,10 +153,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let sub: ReturnType<typeof Linking.addEventListener> | undefined;
     (async () => {
+      console.log("[Auth] AuthProvider cold start");
       try {
         // 1) Optimistic hydration from local cache so the UI never flashes
         //    "Guest" while the network round-trip is in flight.
         const cached = await loadUserCache();
+        console.log("[Auth] cached user?", cached ? { name: cached.name, provider: cached.provider } : null);
         if (cached) setUser(cached);
 
         // 2) Handle any OAuth callback session_id from cold-start URL.
@@ -204,6 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [exchangeSessionId]);
 
   const signInAsGuest = useCallback(async (name?: string) => {
+    console.log("[Auth] signInAsGuest called (user-initiated)");
     const res = await api<{ session_token: string; user: User }>("/auth/guest", {
       method: "POST",
       body: { name: name || "Guest" },
@@ -216,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    console.log("[Auth] signOut called");
     try { await api("/auth/logout", { method: "POST" }); } catch {}
     await setToken(null);
     await setProvider(null);

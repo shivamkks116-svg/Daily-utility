@@ -48,6 +48,7 @@ type Opts = { method?: string; body?: unknown; auth?: boolean };
 let _bootstrapPromise: Promise<string | null> | null = null;
 async function bootstrapGuestSession(): Promise<string | null> {
   if (_bootstrapPromise) return _bootstrapPromise;
+  console.log("[Auth] bootstrapGuestSession INVOKED — creating new anonymous guest");
   _bootstrapPromise = (async () => {
     try {
       const res = await fetch(`${API_BASE}/auth/guest`, {
@@ -60,6 +61,7 @@ async function bootstrapGuestSession(): Promise<string | null> {
       const token = data?.session_token as string | undefined;
       if (token) {
         await setToken(token);
+        await setProvider("guest");
         return token;
       }
       return null;
@@ -101,6 +103,9 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   // masking the failure with a new guest.
   const isAuthMe = path === "/auth/me";
   const canSelfHeal = auth && res.status === 401 && !initialToken && !isAuthMe;
+  if (auth && res.status === 401) {
+    console.log("[Auth] api() got 401 for", path, "initialToken?", !!initialToken, "canSelfHeal?", canSelfHeal);
+  }
   if (canSelfHeal) {
     const fresh = await bootstrapGuestSession();
     if (fresh) {
