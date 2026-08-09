@@ -29,6 +29,13 @@ export function skipNextLock() {
   SKIP_NEXT_LOCK = true;
 }
 
+// Module-level flag — survives AppLockGate remounts (which happen when the
+// Stack navigator reconciles after unlock). Once the user unlocks during this
+// app-process session, we never re-lock automatically until they background
+// the app for LOCK_TIMEOUT_MS. This is the KEY fix for the "unlock succeeds
+// then app re-locks itself" bug traced via adb logcat.
+let SESSION_UNLOCKED = false;
+
 // Lock after being backgrounded for more than this many ms
 const LOCK_TIMEOUT_MS = 15_000;
 
@@ -52,6 +59,7 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   const commitUnlock = useCallback(() => {
     console.log("[AppLock] UNLOCK NOW");
     if (Platform.OS === "android") Vibration.vibrate(15);
+    SESSION_UNLOCKED = true;
     bioBusyRef.current = false;
     autoTriggeredRef.current = false;
     setLocked(false);
@@ -61,10 +69,18 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   const maybeLock = useCallback(async () => {
-    console.log("[AppLock] maybeLock() called");
+    console.log("[AppLock] maybeLock() called; SESSION_UNLOCKED=", SESSION_UNLOCKED);
     if (SKIP_NEXT_LOCK) {
       console.log("[AppLock] SKIP_NEXT_LOCK true, skipping lock");
       SKIP_NEXT_LOCK = false;
+      return;
+    }
+    // KEY FIX: if the app has been unlocked in this session already (survives
+    // component remounts from Stack navigator reconciliation), don't re-lock.
+    // We only reset SESSION_UNLOCKED when the app is truly backgrounded for
+    // LOCK_TIMEOUT_MS or more.
+    if (SESSION_UNLOCKED) {
+      console.log("[AppLock] SESSION_UNLOCKED true — already unlocked this session, skipping");
       return;
     }
     const enabled = await getAppLock();
@@ -108,6 +124,10 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
         const elapsed = bgAt ? Date.now() - bgAt : 0;
         console.log("[AppLock] Resumed from", prev, "after", elapsed, "ms");
         if (bgAt && elapsed >= LOCK_TIMEOUT_MS) {
+          // Real background return past threshold — clear the module flag so
+          // maybeLock can lock again, then trigger it.
+          SESSION_UNLOCKED = false;
+          console.log("[AppLock] SESSION_UNLOCKED reset — will re-lock");
           maybeLock();
         }
       }
