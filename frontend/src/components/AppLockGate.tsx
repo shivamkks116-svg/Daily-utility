@@ -48,23 +48,41 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   // Ref mirrors bioBusy for read-only access inside callbacks so useCallback's
   // identity doesn't change on every busy transition (avoids useEffect thrash).
   const bioBusyRef = useRef<boolean>(false);
+  // "Sticky" unlocked flag for the current session — once biometric or PIN
+  // succeeds, we render children even if a stale state update tries to re-lock
+  // before the app is fully backgrounded. Reset on background→foreground.
+  const sessionUnlockedRef = useRef<boolean>(false);
+  // Debounce: swallow any lock triggers that arrive within N ms of an unlock.
+  // This prevents a race where the AppState "inactive" event fired by the
+  // biometric prompt overlay itself briefly counts as "background".
+  const lastUnlockedAtRef = useRef<number>(0);
 
-  // Universal unlock helper — defers state commit to the next event-loop tick
-  // AND the next animation frame. This decouples our React state update from
-  // the native biometric/keyboard UI dismissal so devices with quirky OEM
-  // window managers (Realme/OnePlus/OPPO/Vivo/Xiaomi MIUI) reliably refresh.
+  // Bulletproof unlock — dispatched from BOTH biometric success and correct PIN.
+  // Uses functional setState (safe against stale closures) AND fires the update
+  // in two ticks to defeat OEM window-manager race conditions.
   const commitUnlock = useCallback(() => {
-    // Success haptic — confirms unlock even before UI transitions.
     if (Platform.OS === "android") Vibration.vibrate(15);
-    // Two-step deferral: setTimeout(0) escapes the current microtask queue,
-    // requestAnimationFrame ensures Android/iOS window has painted before we
-    // unmount the lock overlay.
+    // Update refs synchronously so any concurrent AppState/lock triggers see
+    // that we are unlocked and skip re-locking.
+    sessionUnlockedRef.current = true;
+    lastUnlockedAtRef.current = Date.now();
+    autoTriggeredRef.current = false;
+    bioBusyRef.current = false;
+    // Force a synchronous state commit via functional updates — this pattern
+    // is immune to stale closures that some React Native versions expose after
+    // a long-running native promise resolves.
+    setLocked(() => false);
+    setPinBuf(() => "");
+    setBioErr(() => null);
+    setBioBusy(() => false);
+    // Belt-and-suspenders: schedule a second commit on the next event-loop
+    // tick and animation frame in case the first one was batched during a
+    // native transition (Realme/Poco/OnePlus quirk).
     setTimeout(() => {
+      setLocked(() => false);
+      setPinBuf(() => "");
       requestAnimationFrame(() => {
-        setLocked(false);
-        setPinBuf("");
-        setBioErr(null);
-        autoTriggeredRef.current = false;
+        setLocked(() => false);
       });
     }, 0);
   }, []);
@@ -74,15 +92,20 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
       SKIP_NEXT_LOCK = false;
       return;
     }
+    // Don't re-lock within 1s of a successful unlock (guards against the
+    // biometric-prompt-overlay AppState race).
+    if (Date.now() - lastUnlockedAtRef.current < 1000) return;
     const enabled = await getAppLock();
     if (!enabled) return;
     const pinReady = await isPinSet();
-    if (!pinReady) return; // no PIN configured -> nothing to unlock against
+    if (!pinReady) return;
     setHasPin(pinReady);
     const bioInfo = await checkBiometrics();
     setBio(bioInfo);
     setBioErr(null);
     autoTriggeredRef.current = false;
+    bioBusyRef.current = false;
+    sessionUnlockedRef.current = false;
     setLocked(true);
     setPinBuf("");
   }, []);
@@ -111,23 +134,30 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
   }, [maybeLock]);
 
   const tryBiometric = useCallback(async () => {
+    // Duplicate-prompt guard — refs are read synchronously so no race.
     if (bioBusyRef.current) return;
+    if (sessionUnlockedRef.current) return;
     bioBusyRef.current = true;
     setBioBusy(true);
     setBioErr(null);
     const reason = bio.hasFace
       ? "Unlock DailyHub AI"
       : "Place your finger to unlock DailyHub AI";
-    const res = await biometricPrompt(reason);
+    let res;
+    try {
+      res = await biometricPrompt(reason);
+    } catch {
+      res = { success: false as const, error: "unknown", canRetry: true };
+    }
     bioBusyRef.current = false;
     setBioBusy(false);
-    if (res.success) {
-      // Universal deferred unlock — reliable across all Android OEMs.
+    if (res && res.success) {
+      // Immediate synchronous unlock path — guaranteed to fire regardless of
+      // native prompt animation state.
       commitUnlock();
       return;
     }
-    // Show a friendly message and let the user retry via the button or PIN.
-    setBioErr(biometricErrorMessage(res.error));
+    setBioErr(biometricErrorMessage(res && !res.success ? res.error : "unknown"));
   }, [bio.hasFace, commitUnlock]);
 
   // Auto-trigger biometric ONCE when lock screen appears (only if available).
@@ -168,7 +198,10 @@ export function AppLockGate({ children }: { children: React.ReactNode }) {
 
   const backspace = useCallback(() => setPinBuf((b) => b.slice(0, -1)), []);
 
-  if (!locked) return <>{children}</>;
+  // Render children when unlocked OR when a session unlock has been recorded
+  // (protects against state-update races where `locked` might briefly be true
+  // even though we've already unlocked in the current session).
+  if (!locked || sessionUnlockedRef.current) return <>{children}</>;
 
   return (
     <View style={styles.root} testID="app-lock-screen">
