@@ -12,9 +12,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.dailyutility.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Scan QR codes and barcodes",
+        "NSCameraUsageDescription": "Scan QR codes and capture photos for notes",
         "NSMicrophoneUsageDescription": "Record voice notes",
-        "NSPhotoLibraryUsageDescription": "Attach images to notes and PDFs",
+        "NSPhotoLibraryUsageDescription": "Attach photos and videos to notes",
+        "NSPhotoLibraryAddUsageDescription": "Save generated images and PDFs to your library",
         "NSFaceIDUsageDescription": "Unlock the app securely with Face ID"
       }
     },
@@ -29,6 +30,8 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
