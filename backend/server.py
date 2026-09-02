@@ -1,6 +1,6 @@
 """DailyHub AI Backend - FastAPI + MongoDB + Emergent Auth + Gemini 3 Flash."""
 from fastapi import FastAPI, APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -981,6 +981,26 @@ async def account_deletion_html_alias():
 @api_router.get("/legal/account-deletion", response_class=HTMLResponse, include_in_schema=False)
 async def api_account_deletion_html():
     return HTMLResponse(_read_static("account-deletion.html"))
+
+
+# Play Store marketing assets — one-click download bundle for the store submission.
+_DOWNLOAD_DIR = _STATIC_DIR / "downloads"
+
+
+@app.get("/downloads/{filename}", include_in_schema=False)
+async def download_static(filename: str):
+    # Prevent path traversal
+    if "/" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = _DOWNLOAD_DIR / filename
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(path), filename=filename, media_type="application/octet-stream")
+
+
+@api_router.get("/downloads/{filename}", include_in_schema=False)
+async def api_download_static(filename: str):
+    return await download_static(filename)
 
 
 class DeletionRequestIn(BaseModel):
