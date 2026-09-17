@@ -42,7 +42,7 @@ const TOOLS: Tool[] = [
   { key: "summarize",  label: "Summarizer",    icon: "reader",              category: "AI", route: "/ai/tool/summarize" },
   { key: "email",      label: "Email Writer",  icon: "mail",                category: "AI", route: "/ai/tool/email" },
   { key: "study",      label: "Study Assistant",icon:"school",              category: "AI", route: "/ai/tool/study" },
-  { key: "ocr",        label: "AI OCR",        icon: "scan",                category: "AI", soon: true },
+  { key: "ocr",        label: "AI OCR",        icon: "scan",                category: "AI", route: "/image-toolkit/ocr" },
   { key: "resume",     label: "Resume Builder",icon: "briefcase",           category: "AI", soon: true },
 
   // Finance
@@ -67,10 +67,11 @@ const TOOLS: Tool[] = [
   { key: "device",   label: "Device Info",  icon: "phone-portrait", category: "Device", soon: true },
 
   // Files
-  { key: "pdf",     label: "Image → PDF",     icon: "document-attach", category: "Files", route: "/pdf" },
-  { key: "zip",     label: "ZIP Extractor",   icon: "archive",         category: "Files", soon: true },
-  { key: "imgconv", label: "Image Converter", icon: "image",           category: "Files", soon: true },
-  { key: "vault",   label: "Secure Vault",    icon: "lock-closed",     category: "Files", soon: true },
+  { key: "pdf-toolkit", label: "PDF Toolkit",     icon: "document-attach", category: "Files", route: "/pdf-toolkit" },
+  { key: "img-toolkit", label: "Image Toolkit",   icon: "image",           category: "Files", route: "/image-toolkit" },
+  { key: "pdf",         label: "Image → PDF",     icon: "documents",       category: "Files", route: "/pdf-toolkit/images-to-pdf" },
+  { key: "zip",         label: "ZIP Extractor",   icon: "archive",         category: "Files", soon: true },
+  { key: "vault",       label: "Secure Vault",    icon: "lock-closed",     category: "Files", soon: true },
 ];
 
 const CATEGORIES = ["All", "Productivity", "AI", "Finance", "Health", "Device", "Files"] as const;

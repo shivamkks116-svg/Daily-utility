@@ -1,0 +1,11 @@
+diff --git a/node_modules/tslib/modules/index.js b/node_modules/tslib/modules/index.js
+index c91f618..fa0692d 100644
+--- a/node_modules/tslib/modules/index.js
++++ b/node_modules/tslib/modules/index.js
+@@ -1,4 +1,5 @@
+-import tslib from '../tslib.js';
++import * as tslibNs from '../tslib.js';
++const tslib = tslibNs.default || tslibNs;
+ const {
+     __extends,
+     __assign,

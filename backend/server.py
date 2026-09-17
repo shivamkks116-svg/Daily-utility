@@ -1032,6 +1032,236 @@ async def api_submit_deletion(payload: DeletionRequestIn, request: Request):
     return {"status": "received", "message": "Your deletion request has been received. We will confirm within 24 hours and complete deletion within 30 days.", "request_id": doc["id"]}
 
 
+# ---------------------- PDF & Image AI Toolkit ----------------------
+# All these endpoints accept a base64-encoded file, run local extraction with
+# PyMuPDF (no upload to external services beyond Emergent LLM for the AI parts),
+# and return processed results. We never persist user documents.
+
+import base64 as _b64
+import re as _re
+
+try:
+    import fitz  # PyMuPDF
+except Exception:  # pragma: no cover
+    fitz = None  # type: ignore
+
+
+def _decode_b64_bytes(data: str) -> bytes:
+    """Accepts either a data URL (data:application/pdf;base64,...) or raw b64."""
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if "," in data[:80]:
+        data = data.split(",", 1)[1]
+    # Hard cap on payload size — protects the server from a runaway upload.
+    # Base64 is ~4/3 the raw byte size, so 40 MB base64 ≈ 30 MB decoded, which is
+    # more than enough for the typical mobile PDF.
+    if len(data) > 40 * 1024 * 1024:
+        raise HTTPException(413, "File too large (max ~30 MB)")
+    try:
+        return _b64.b64decode(data, validate=False)
+    except Exception:
+        raise HTTPException(400, "Invalid base64 payload")
+
+
+def _pdf_extract_text_bytes(pdf_bytes: bytes, max_chars: int = 60000) -> str:
+    if fitz is None:
+        raise HTTPException(500, "PDF text extraction not available on server")
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    pieces: List[str] = []
+    total = 0
+    try:
+        for page in doc:
+            t = page.get_text("text") or ""
+            if not t:
+                continue
+            pieces.append(t)
+            total += len(t)
+            if total >= max_chars:
+                break
+    finally:
+        doc.close()
+    text = "\n".join(pieces).strip()
+    # Collapse insane whitespace runs
+    text = _re.sub(r"[ \t]+", " ", text)
+    text = _re.sub(r"\n{3,}", "\n\n", text)
+    return text[:max_chars]
+
+
+class PDFFileIn(BaseModel):
+    file_base64: str = Field(..., description="PDF bytes as base64 or data URL")
+    filename: Optional[str] = None
+
+
+class PDFAskIn(PDFFileIn):
+    question: str
+
+
+class PDFTranslateIn(PDFFileIn):
+    target_language: str = "Hindi"
+
+
+@api_router.post("/pdf/extract-text")
+async def pdf_extract_text(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    await require_user(authorization)
+    data = _decode_b64_bytes(payload.file_base64)
+    text = _pdf_extract_text_bytes(data)
+    return {"text": text, "chars": len(text)}
+
+
+@api_router.post("/pdf/info")
+async def pdf_info(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    try:
+        meta = dict(doc.metadata or {})
+        pages = doc.page_count
+        # First page size (points -> 1/72 inch)
+        try:
+            r = doc[0].rect
+            size = {"w": round(r.width, 2), "h": round(r.height, 2)}
+        except Exception:
+            size = None
+        encrypted = bool(doc.is_encrypted)
+    finally:
+        doc.close()
+    return {"pages": pages, "metadata": meta, "size_pt": size, "encrypted": encrypted, "bytes": len(data)}
+
+
+@api_router.post("/pdf/summarize")
+async def pdf_summarize(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    data = _decode_b64_bytes(payload.file_base64)
+    text = _pdf_extract_text_bytes(data, max_chars=45000)
+    if not text:
+        raise HTTPException(422, "This PDF has no extractable text (it may be a scanned image). Try OCR.")
+    # Only consume quota once we know the document is usable — never burn a
+    # unit on unopenable/empty PDFs.
+    await _check_and_increment_quota(user["user_id"])
+    summary = await _one_shot(
+        "You are a concise executive summariser. Return a well-structured Markdown summary with the sections: **TL;DR** (2 lines), **Key Points** (5-8 bullets), **Notable Details**, and **Suggested Actions**. Preserve technical accuracy. Never invent facts.",
+        f"Summarise the following document extract:\n\n{text}",
+        session_key="pdf-summarize",
+    )
+    return {"summary": summary, "extract_chars": len(text)}
+
+
+@api_router.post("/pdf/keypoints")
+async def pdf_keypoints(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    data = _decode_b64_bytes(payload.file_base64)
+    text = _pdf_extract_text_bytes(data, max_chars=40000)
+    if not text:
+        raise HTTPException(422, "No extractable text found in the document.")
+    await _check_and_increment_quota(user["user_id"])
+    result = await _one_shot(
+        "Extract the most important key points from the given document. Return 8-12 crisp Markdown bullets. Each bullet <= 22 words. No fluff, no repetition.",
+        text,
+        session_key="pdf-keypoints",
+    )
+    return {"keypoints": result}
+
+
+@api_router.post("/pdf/ask")
+async def pdf_ask(payload: PDFAskIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    q = (payload.question or "").strip()
+    if not q:
+        raise HTTPException(400, "Question is required")
+    data = _decode_b64_bytes(payload.file_base64)
+    text = _pdf_extract_text_bytes(data, max_chars=40000)
+    if not text:
+        raise HTTPException(422, "No extractable text in the document.")
+    await _check_and_increment_quota(user["user_id"])
+    result = await _one_shot(
+        "You are a document Q&A assistant. Use ONLY the provided document extract to answer. If the answer is not present, say so explicitly. Cite short quoted phrases from the document when relevant. Reply in the same language the user asks.",
+        f"DOCUMENT EXTRACT:\n\"\"\"\n{text}\n\"\"\"\n\nQUESTION: {q}",
+        session_key="pdf-ask",
+    )
+    return {"answer": result}
+
+
+@api_router.post("/pdf/translate")
+async def pdf_translate(payload: PDFTranslateIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    data = _decode_b64_bytes(payload.file_base64)
+    text = _pdf_extract_text_bytes(data, max_chars=25000)
+    if not text:
+        raise HTTPException(422, "No extractable text in the document.")
+    await _check_and_increment_quota(user["user_id"])
+    target = (payload.target_language or "Hindi").strip()[:50]
+    result = await _one_shot(
+        f"You are a professional translator. Translate the document to {target}. Preserve headings, bullet points, numbers and technical terms. Return only the translated text in Markdown.",
+        text,
+        session_key="pdf-translate",
+    )
+    return {"translation": result, "target_language": target}
+
+
+# ---------------- Image AI (OCR + Describe) ----------------
+class ImageFileIn(BaseModel):
+    image_base64: str = Field(..., description="Image bytes as base64 or data URL")
+    mime: Optional[str] = "image/jpeg"
+
+
+async def _gemini_vision(system: str, user_text: str, image_b64: str, mime: str) -> str:
+    """Call Emergent LLM (Gemini) with an image attachment via emergentintegrations."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"vision-{uuid.uuid4().hex[:8]}",
+        system_message=system,
+    ).with_model("gemini", "gemini-3-flash-preview")
+    # Strip data URL if present
+    raw_b64 = image_b64.split(",", 1)[1] if "," in image_b64[:80] else image_b64
+    try:
+        resp = await chat.send_message(
+            UserMessage(text=user_text, file_contents=[ImageContent(image_base64=raw_b64)])
+        )
+        return str(resp).strip()
+    except Exception as e:
+        logger.exception("Vision LLM error")
+        raise HTTPException(500, f"AI error: {str(e)[:200]}")
+
+
+@api_router.post("/image/ocr")
+async def image_ocr(payload: ImageFileIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
+    if not payload.image_base64:
+        raise HTTPException(400, "Empty image")
+    result = await _gemini_vision(
+        "You are an OCR engine. Return ONLY the exact text found in the image, preserving line breaks and structure. Do not add commentary. If the image has no readable text, respond with exactly: [NO_TEXT_DETECTED].",
+        "Extract all text from this image.",
+        payload.image_base64,
+        payload.mime or "image/jpeg",
+    )
+    return {"text": result}
+
+
+@api_router.post("/image/describe")
+async def image_describe(payload: ImageFileIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await _check_and_increment_quota(user["user_id"])
+    if not payload.image_base64:
+        raise HTTPException(400, "Empty image")
+    result = await _gemini_vision(
+        "You are an image describer for accessibility. Give a 2-3 sentence description of the image and 4-6 key tags.",
+        "Describe this image and list its key tags.",
+        payload.image_base64,
+        payload.mime or "image/jpeg",
+    )
+    return {"description": result}
+
+
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 

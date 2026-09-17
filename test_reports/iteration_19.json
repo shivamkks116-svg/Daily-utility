@@ -1,0 +1,48 @@
+{
+  "summary": "PASS 28/28 (100%). Full backend test suite for the new PDF + Image AI Toolkit ran green on first attempt against the public preview URL. Verified all 8 new endpoints (/api/pdf/info, /pdf/extract-text, /pdf/summarize, /pdf/keypoints, /pdf/ask, /pdf/translate, /api/image/ocr, /image/describe), auth enforcement on every one (401 without Bearer), quota semantics (info + extract-text DO NOT consume quota; summarize + ocr DO consume quota, verified via /api/ai/quota diff), plus regression on /api/auth/guest, /auth/me (valid, missing, bad token), and /auth/session (invalid session_id). Emergent LLM Gemini vision + one-shot flows produced sane outputs (summary contains structure, key-points contain bullets, PDF Q&A correctly answered 'Paris' from planted fact, translation returned Hindi content).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "detailed_results": {
+    "auth_regression": {
+      "POST /api/auth/guest": "200, session_token starts with 'guest_', user._id excluded, is_guest=true",
+      "GET /api/auth/me (valid)": "200, returns hydrated user",
+      "GET /api/auth/me (no token)": "401",
+      "GET /api/auth/me (bad token)": "401",
+      "POST /api/auth/session (bad id)": "non-2xx (500) as expected"
+    },
+    "unauthorized_401_checks": "All 8 new endpoints return 401 with no Bearer header (parametrized)",
+    "pdf_info": "2-page PDF => pages=2, encrypted=false, metadata dict, size_pt.w/h present, bytes matches. Accepts both raw base64 and data:application/pdf;base64,... prefix. Invalid PDF => 400.",
+    "pdf_extract_text": "PyMuPDF extraction returned ~300 chars containing 'DailyHub' / 'Toolkit'. chars field correct.",
+    "pdf_info_and_extract_do_not_consume_quota": "quota.used before/after both calls: unchanged (verified via /api/ai/quota diff).",
+    "pdf_summarize": "Returned Markdown summary >30 chars, extract_chars>0, quota.used +1.",
+    "pdf_keypoints": "Returned bullet-list Markdown (contains '-' or '*' or '•').",
+    "pdf_ask": "Question 'capital of France?' => answer contained 'Paris' from planted document text. Empty question => 400.",
+    "pdf_translate": "target_language echoed as 'Hindi', translation body >10 chars.",
+    "image_ocr": "Gemini vision returned text; quota.used +1 verified. Empty image => 400.",
+    "image_describe": "Returned >15 char description with tags."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pdf_image_toolkit.py",
+    "/app/test_reports/pytest/pdf_image_toolkit_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1296 lines — exceeds the 700-line soft cap. Consider splitting AI/PDF/Image routers into their own modules (routers/pdf.py, routers/image.py, routers/ai.py) for maintainability. NOT blocking.",
+    "In _gemini_vision (server.py:1208-1225), the `mime` parameter is accepted but never forwarded to ImageContent. emergentintegrations ImageContent auto-detects from bytes so this works today, but the API surface promises mime handling — either pass it through or drop the parameter. NOT blocking; no test failure.",
+    "/api/pdf/ask currently increments the quota BEFORE decoding/extracting text. If a user submits an unopenable PDF they still lose a quota unit (raise 400/422 from _decode_b64_bytes / _pdf_extract_text_bytes AFTER quota inc). Consider moving _check_and_increment_quota AFTER the local pre-checks in pdf/summarize, pdf/keypoints, pdf/ask, pdf/translate to make quota consumption fair. NOT blocking, but user-visible.",
+    "Auth: get_user_from_token treats naive datetimes as UTC (server.py:63-68) — good. Guest sessions expire in 30 days — reasonable.",
+    "PDFFileIn / ImageFileIn have no upper-bound size validation. A very large base64 payload could exhaust memory. Consider adding a max-length check (e.g. 25MB) at _decode_b64_bytes. NOT blocking."
+  ],
+  "updated_files": ["/app/backend/tests/test_pdf_image_toolkit.py (new)"],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "N/A (backend-only per request)"},
+  "seed_data_creation": "Ephemeral guest users prefixed with TEST_ created via /api/auth/guest during the run. Consumed a small amount of AI quota (~5 units) on the fresh guest — no persistent artifacts beyond that.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable test file at /app/backend/tests/test_pdf_image_toolkit.py. Uses EXPO_PUBLIC_BACKEND_URL (falls back to preview URL). Generates its own 2-page PDF via pymupdf and a 500x220 JPEG via PIL at fixture scope (session-scoped so LLM calls run against consistent input). Run with: `pytest /app/backend/tests/test_pdf_image_toolkit.py -v --tb=short`. Parallel execution (pytest-xdist) works — 24.7s total wall-clock. Auth flow uses POST /api/auth/guest for a fresh session per run so no seed cleanup required.",
+  "rca_of_issue": "N/A — no bugs found in this iteration. The auth guest-swap regression the main agent flagged is not exercisable purely from backend tests (it's a frontend client-side behavior in /app/frontend/src/api/client.ts and AuthContext.tsx). Backend contract is intact: /auth/me returns 401 (never auto-creates guests), /auth/guest requires explicit POST, /auth/session requires session_id."
+}

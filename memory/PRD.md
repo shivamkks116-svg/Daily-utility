@@ -147,3 +147,77 @@ Indexes added; auth guards; user isolation; no `_id` leakage.
 - Real Play Billing v8 (v5 feature).
 - Push Notifications via FCM (requires user's google-services.json — v5 feature).
 - Home-screen widgets (v6).
+
+
+## v5 PDF & Image Toolkit + Guest-swap Bug Fix (this iteration)
+
+### Guest-Swap Bug Fix (critical)
+- **Bug:** When user cleared app from recent apps and reopened, Google account name silently changed to "Guest".
+- **Root cause:** `api()` client's self-healing 401 handler was bootstrapping a NEW guest session even for signed-in users whose `/auth/me` returned 401.
+- **Fix (2 files):**
+  - `src/api/client.ts`: Self-heal only when `initialToken` is null AND path is not `/auth/me`. Added `AUTH_PROVIDER_KEY` (`google`/`guest`) to SecureStore for future safety guards. Clears provider marker on hard 401.
+  - `src/contexts/AuthContext.tsx`: Added `USER_CACHE_KEY` (AsyncStorage) that caches the User profile. Cold-start now hydrates from cache instantly (no "Guest flash"), then verifies with `/auth/me` in the background. 401 → sign out. Network error → keep cached user. Also added legacy-session auto-repair (missing provider marker → force sign-out) and provider-downgrade guard (google→guest → sign-out).
+- **Debug logging:** `[Auth]` prefix everywhere for adb logcat tracing.
+
+### PDF Toolkit (`/(root)/pdf-toolkit`)
+- **Hub screen** with categories, favorites, recents, search
+- **Create:** Images→PDF (with page size/orientation), Text→PDF (formatted)
+- **Organize:** Merge, Split (page ranges), Delete pages, Rotate pages, Extract pages
+- **Edit:** Watermark (diagonal text overlay), Page Numbers (header/footer, multiple formats)
+- **AI Assistant** (with explicit consent modal): Summarize, Ask Q&A, Extract Key Points, Translate
+- Uses **`pdf-lib`** (pure JS) for all local operations — no Kotlin/native deps
+- Uses **`expo-document-picker`** with SAF for file selection
+- Uses **`expo-print`** for HTML→PDF rendering (Images→PDF, Text→PDF, Image watermark)
+- Uses **`expo-sharing`** for share sheet output
+
+### Image Toolkit (`/(root)/image-toolkit`)
+- Hub screen with categories, favorites
+- **Basics:** Compress (low/medium/high), Resize (%/custom), Convert Format (JPG/PNG/WebP)
+- **Edit:** Crop (aspect ratio presets), Rotate/Flip (90/180/270 + horizontal/vertical), Watermark (text overlay)
+- **AI:** Extract Text (OCR — Gemini vision), Describe Image (caption + tags)
+- Uses **`expo-image-manipulator`** for all local ops
+- Consent modals before uploading to AI
+
+### Backend additions
+- 8 new endpoints under `/api/pdf/*` and `/api/image/*`:
+  - `pdf/info`, `pdf/extract-text` — free (no quota)
+  - `pdf/summarize`, `pdf/keypoints`, `pdf/ask`, `pdf/translate` — consume AI quota (only AFTER successful text extraction)
+  - `image/ocr`, `image/describe` — consume AI quota, Gemini vision via emergentintegrations
+- Payload size cap: 40 MB base64 (≈30 MB raw)
+- Uses **PyMuPDF (`fitz`)** for text extraction; never persists user documents
+- `_gemini_vision` helper builds `LlmChat` + `ImageContent` for vision calls
+
+### Tech stack changes (v5)
+- Added: `pdf-lib@1.17.1`, `expo-document-picker@14.0.8`, `patch-package@8.0.1`, backend: `pymupdf==1.28.2`
+- **tslib module-interop crash fixed** via patch-package (`patches/tslib+2.8.1.patch`) — Metro auto-applies on install (`postinstall: patch-package` in package.json). tslib pinned to 2.8.1 via `resolutions` field.
+
+### Play Store Release Assets (v5)
+- Full package generated at `/app/branding/play-store-v2/` and served at `/api/downloads/dailyhub-playstore-v2.zip` (3.3 MB, 32 files):
+  - App icon 512×512 + 1024×1024
+  - Feature graphic 1024×500
+  - Phone screenshots (1080×1920) × 8
+  - 7-inch tablet screenshots (1920×1080, 16:9) × 8
+  - 10-inch tablet screenshots (2560×1440, 16:9) × 8
+- Regen script: `/app/branding/regen_playstore_v2.py`
+
+### Play Console updates for v5
+- `targetSdkVersion` bumped to **36** (Android 16)
+- `compileSdkVersion` bumped to **36**
+- New Android permissions: `READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED`
+- iOS: `NSPhotoLibraryAddUsageDescription` added
+- App version bumped **1.0.0 → 1.0.1** (`versionCode 1 → 2`)
+
+### Testing (v5)
+- **Backend:** iteration_19 — 28/28 tests PASS covering all 8 new endpoints (success paths, error paths, 401-without-auth, quota semantics, LLM output sanity).
+- **Frontend:** Smoke-tested via web preview screenshots. Hub screens for PDF Toolkit and Image Toolkit render with correct dark green Material You theme.
+
+### Explicit non-goals (v5)
+- Full PDF renderer/preview (needs native lib — deferred to v6 with cloud build)
+- OCR of scanned PDF pages (needs Tesseract or backend PyMuPDF-vision — v6)
+- Password protection / encryption on PDFs (pdf-lib doesn't support — v6 via backend)
+- Ghostscript-based aggressive PDF compression (v6)
+- Draw/Highlight/Signature on PDFs (v6, needs canvas)
+- Scan-to-PDF with document detection (v6)
+- Image collage/grid maker (v6)
+- Background remove (needs rembg/AI model — v6)
+
