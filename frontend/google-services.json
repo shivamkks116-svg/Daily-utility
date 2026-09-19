@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "978601648769-iqdbdtgfefp95gjejp6hf60n70pq7lhh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dailyutility.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
           "client_id": "978601648769-2uodrf6s0t6pk8i8fi5dnooss8rhrd89.apps.googleusercontent.com",
           "client_type": 3
         }
