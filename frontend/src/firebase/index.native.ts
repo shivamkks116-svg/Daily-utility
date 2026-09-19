@@ -10,11 +10,14 @@
  * crashes.
  */
 import { Platform } from "react-native";
-import Constants from "expo-constants";
 
 // Guard imports — never crash bundling on unsupported platforms.
-const isExpoGo = Constants.executionEnvironment === "storeClient";
-const nativeReady = Platform.OS !== "web" && !isExpoGo;
+// On the actual Android APK, Platform.OS is "android" and native modules
+// are linked, so requires() succeed. On Expo Go, requires() throw and we
+// fall back to unavailable. We deliberately don't check
+// `Constants.executionEnvironment` here because some builds surface it as
+// undefined / "bare" inconsistently.
+const nativeReady = Platform.OS !== "web";
 
 let auth: any = null;
 let GoogleSignin: any = null;
