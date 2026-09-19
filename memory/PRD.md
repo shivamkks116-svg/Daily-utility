@@ -252,3 +252,46 @@ Indexes added; auth guards; user isolation; no `_id` leakage.
 - Push Notifications (P1) — deferred, requires user's `google-services.json`.
 - Home-screen Android widgets (P2) — deferred, needs native module.
 - Wear OS companion (P2) — deferred.
+
+---
+
+## v7 Scope — Firebase Authentication (Google + Email/Password + Guest)
+
+Replaces Emergent-managed Google Auth with the user's own Firebase project (`daily-hub-2077d`, package `com.dailyutility.app`).
+
+### Frontend (`/app/frontend`)
+- `src/firebase/index.native.ts` — wraps `@react-native-firebase/auth` (v26) + `@react-native-google-signin/google-signin` (v14+). Guarded `require()` so bundler never touches native modules on web / Expo Go.
+- `src/firebase/index.web.ts` — stub throwing "install dev build" error; Metro auto-picks it on web.
+- `src/firebase/index.ts` — TS/ESLint resolution shim re-exporting web stubs.
+- `src/contexts/AuthContext.tsx` — rewritten to expose `signInWithGoogle`, `signInWithEmail`, `signUpWithEmail`, `fetchEmailSignInMethods`, `sendPasswordReset`, `resendEmailVerification`, `refreshEmailVerification`, `signInAsGuest`, `signOut`, plus a `humanizeFirebaseError` helper.
+- `app/login.tsx` — redesigned with 3 methods:
+  - **Continue with Google** — native Google Sign-In → Firebase credential → backend exchange.
+  - **Continue with Email** — bottom-sheet modal with smart single-email step. `fetchSignInMethodsForEmail` decides between sign-in / sign-up flow. Sign-up asks for Name + Password + Confirm. Sign-in shows "Forgot password?" that opens the reset flow inline.
+  - **Continue as Guest** — anonymous fallback preserved.
+- `app/verify-email.tsx` — verification wait screen with "I've verified" (reloads Firebase user + re-syncs backend), "Resend email" (60s cooldown), and "Use a different email" (signs out).
+- `app/index.tsx` — root gate now routes password-provider users with `email_verified === false` to `/verify-email` before letting them into the main app.
+- `app.json` — `android.googleServicesFile: "./google-services.json"`, plugins `@react-native-firebase/app`, `@react-native-firebase/auth`, `@react-native-google-signin/google-signin`.
+- `.env` — `EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID` for `GoogleSignin.configure()`.
+
+### Backend (`/app/backend/server.py`)
+- `firebase-admin==7.6.0` — initialized with `projectId` only (no service-account JSON required, uses Google's public JWKS to verify tokens).
+- New endpoint `POST /api/auth/firebase` — accepts `{id_token, provider?}`, calls `_fb_auth.verify_id_token`, upserts user in Mongo by email (reuses `user_id` for existing accounts), stamps `firebase_uid`, `email_verified`, `provider` (`google` | `password`), then mints and returns the app's existing 7-day `session_token` scheme so downstream RevenueCat / notes / habits keep working unchanged.
+- Legacy `/api/auth/session` (Emergent) kept for backward compatibility.
+- `/api/auth/me`, `/api/auth/guest`, `/api/auth/logout` unchanged.
+- `.env` — `FIREBASE_PROJECT_ID=daily-hub-2077d`, `FIREBASE_WEB_API_KEY=…`.
+
+### Credentials & Console Setup
+- `google-services.json` saved at `/app/frontend/google-services.json` (contains OAuth Web client ID entry).
+- Firebase Console: Google + Email/Password providers enabled. SHA-1 fingerprint to be added by user on their local machine before first release build.
+
+### Testing (v7)
+- Backend: `POST /api/auth/firebase` with invalid token → **401** (`_fb_auth.verify_id_token` rejects). Confirms firebase-admin is initialized correctly without a service account.
+- Frontend: Web preview renders login screen with 3 buttons + gradient hero. Email bottom-sheet opens with email input + "Continue" CTA. Google Sign-In & Email flows will only work on Android APK / dev build (as designed).
+- Recorded in `/app/memory/test_credentials.md`.
+
+### Explicit non-goals (v7)
+- iOS Firebase setup (user chose Android-only).
+- Phone number auth / OTP (deferred).
+- Firestore / Cloud Storage (backend still uses Mongo).
+- Firebase Admin service-account JSON (not needed for `verify_id_token`).
+

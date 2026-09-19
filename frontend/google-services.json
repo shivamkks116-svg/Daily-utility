@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "978601648769",
+    "project_id": "daily-hub-2077d",
+    "storage_bucket": "daily-hub-2077d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:978601648769:android:ed3c7b1bf9e1a20a012380",
+        "android_client_info": {
+          "package_name": "com.dailyutility.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "978601648769-2uodrf6s0t6pk8i8fi5dnooss8rhrd89.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC88fGZLvjQWYaY1gqtxceaC-jFEarIL7k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "978601648769-2uodrf6s0t6pk8i8fi5dnooss8rhrd89.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

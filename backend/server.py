@@ -24,6 +24,22 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
+# ---------------------- Firebase Admin (no service account needed for verify) ----------------------
+FIREBASE_PROJECT_ID = os.environ.get('FIREBASE_PROJECT_ID', '')
+FIREBASE_WEB_API_KEY = os.environ.get('FIREBASE_WEB_API_KEY', '')
+
+try:
+    import firebase_admin
+    from firebase_admin import auth as _fb_auth, credentials as _fb_credentials
+    if not firebase_admin._apps:
+        # verify_id_token only needs projectId; no service-account required.
+        firebase_admin.initialize_app(options={'projectId': FIREBASE_PROJECT_ID} if FIREBASE_PROJECT_ID else None)
+    _FB_READY = bool(FIREBASE_PROJECT_ID)
+except Exception as _e:  # noqa
+    _FB_READY = False
+    _fb_auth = None
+    logging.getLogger('dailyhub').warning('firebase-admin init failed: %s', _e)
+
 app = FastAPI(title="DailyHub AI API")
 api_router = APIRouter(prefix="/api")
 
@@ -254,6 +270,101 @@ async def auth_guest(payload: GuestLoginIn):
         "created_at": utcnow(),
         "expires_at": utcnow() + timedelta(days=30),
     })
+    return {"session_token": session_token, "user": clean(user)}
+
+
+# -------- Firebase Auth (Google, Email/Password) --------
+class FirebaseAuthIn(BaseModel):
+    id_token: str
+    provider: Optional[str] = None  # "google" | "password" (hint, not trusted)
+
+
+async def _mint_app_session(user_id: str, days: int = 7) -> str:
+    """Create a new 7-day session_token that reuses the app's existing token
+    scheme. Callers pass the persisted user_id."""
+    session_token = f"fb_{uuid.uuid4().hex}"
+    await db.user_sessions.insert_one({
+        "session_token": session_token,
+        "user_id": user_id,
+        "created_at": utcnow(),
+        "expires_at": utcnow() + timedelta(days=days),
+    })
+    return session_token
+
+
+@api_router.post("/auth/firebase")
+async def auth_firebase(payload: FirebaseAuthIn):
+    """Verify a Firebase ID token, upsert the user, and return the app's own
+    session_token. Preserves existing user_id when email already exists so
+    downstream data (notes, todos, RevenueCat) keeps working."""
+    if not _FB_READY or _fb_auth is None:
+        raise HTTPException(status_code=503, detail="Firebase Admin not configured on server")
+
+    token = (payload.id_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="id_token required")
+
+    try:
+        decoded = _fb_auth.verify_id_token(token, check_revoked=False)
+    except Exception as e:
+        logger.warning("firebase verify_id_token failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid or expired Firebase token") from e
+
+    # Extract identity
+    firebase_uid = decoded.get("uid") or decoded.get("user_id")
+    email = (decoded.get("email") or "").lower().strip()
+    name = decoded.get("name") or decoded.get("email") or "User"
+    picture = decoded.get("picture")
+    email_verified = bool(decoded.get("email_verified"))
+    firebase_provider = decoded.get("firebase", {}).get("sign_in_provider", "")
+
+    # Derive app-side provider label
+    if firebase_provider == "google.com":
+        provider = "google"
+    elif firebase_provider == "password":
+        provider = "password"
+    else:
+        provider = firebase_provider or (payload.provider or "firebase")
+
+    if not email:
+        raise HTTPException(status_code=401, detail="Email missing from Firebase token")
+
+    # Upsert user — reuse existing user_id if email is already known
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        user_id = existing["user_id"]
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "name": name,
+                "picture": picture,
+                "provider": provider,
+                "firebase_uid": firebase_uid,
+                "email_verified": email_verified,
+                "last_login_at": utcnow(),
+                "is_guest": False,
+            }},
+        )
+        user = {**existing, "name": name, "picture": picture, "provider": provider,
+                "firebase_uid": firebase_uid, "email_verified": email_verified,
+                "is_guest": False}
+    else:
+        user_id = new_id("user")
+        user = {
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "picture": picture,
+            "provider": provider,
+            "firebase_uid": firebase_uid,
+            "email_verified": email_verified,
+            "is_guest": False,
+            "created_at": utcnow(),
+            "last_login_at": utcnow(),
+        }
+        await db.users.insert_one({**user})
+
+    session_token = await _mint_app_session(user_id, days=7)
     return {"session_token": session_token, "user": clean(user)}
 
 

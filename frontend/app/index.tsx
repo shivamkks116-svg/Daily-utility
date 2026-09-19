@@ -10,8 +10,16 @@ export default function GateScreen() {
 
   useEffect(() => {
     if (loading) return;
-    if (user) router.replace("/(main)/home");
-    else router.replace("/login");
+    if (user) {
+      // Password users must verify email before entering main app.
+      if (user.provider === "password" && user.email_verified === false) {
+        router.replace("/verify-email");
+      } else {
+        router.replace("/(main)/home");
+      }
+    } else {
+      router.replace("/login");
+    }
   }, [user, loading, router]);
 
   return (
