@@ -69,7 +69,7 @@ export default function LoginScreen() {
     setError(null);
     if (!firebaseNativeAvailable) {
       setError(
-        "Google Sign-In only works in the Android APK. On web preview, use Continue as Guest.",
+        "Firebase native module unavailable. Rebuild the APK — ensure prebuild ran and google-services.json is present.",
       );
       return;
     }
@@ -78,7 +78,10 @@ export default function LoginScreen() {
       await signInWithGoogle();
       router.replace("/(main)/home");
     } catch (e) {
-      setError(humanizeFirebaseError(e));
+      const err = e as { message?: string; code?: string };
+      const codePart = err?.code ? ` (code: ${err.code})` : "";
+      // Show the enriched Google/Firebase message + code, but never a token.
+      setError(`${err?.message || humanizeFirebaseError(e)}${codePart}`);
     } finally {
       setLoading(null);
     }
