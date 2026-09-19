@@ -1,14 +1,6 @@
-// Ad module stubs — AdMob is intentionally disabled for local Windows builds
-// due to react-native-google-mobile-ads Kotlin toolchain conflicts on RN 0.81.
-// The wrappers below preserve the API surface used elsewhere in the app so no
-// call sites need to change. Real ads can be plugged back in later by building
-// through Emergent's cloud publish pipeline (proper Kotlin toolchain there).
-export const AD_UNIT_IDS = {
-  banner: "",
-  interstitial: "",
-  rewarded: "",
-};
-
-// Reflect that ads are not available in the currently-shipped native binary.
-export const ADS_ENABLED = false;
-export const PRODUCTION_ADS = false;
+// Central ad-unit config. Real IDs live in native.tsx (test IDs by default,
+// EXPO_PUBLIC_ADMOB_* env vars for production). ADS_ENABLED flips to true now
+// that react-native-google-mobile-ads is wired via the AdMob config plugin.
+export { adUnitIds as AD_UNIT_IDS, adsAvailable } from "./native";
+export const ADS_ENABLED = true;
+export const PRODUCTION_ADS = process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS !== "true";

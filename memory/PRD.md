@@ -221,3 +221,34 @@ Indexes added; auth guards; user isolation; no `_id` leakage.
 - Image collage/grid maker (v6)
 - Background remove (needs rembg/AI model — v6)
 
+
+
+---
+
+## v6 Scope — Monetization Polish (Paywall UX + AdMob rules)
+
+### Paywall UI polish (`/app/frontend/app/premium/index.tsx`)
+- Gradient hero (`expo-linear-gradient`) with brand badge, punchy CTA copy, and inline social proof strip ("Loved by 10,000+ productive users" + 5 stars).
+- **Free vs Premium comparison table** (6 rows: AI chat / day, Ads, PDF size, Image OCR, Support priority, Premium badge).
+- **Dynamic yearly savings** — computed from real RevenueCat monthly vs annual prices, plus `≈ ₹X/mo` monthly-equivalent hint.
+- **Free trial detection** — if package has `introPrice` or `defaultOption.freePhase`, shows a "Start free trial" chip on the plan card, dedicated trial banner above the CTA, and swaps CTA copy to "Start free trial".
+- **Testimonials carousel** (3 cards) and **collapsible FAQ** (4 Hindi/Hinglish Q&As) with `LayoutAnimation`.
+- **Active-member screen** upgraded — gradient hero with plan chip (Monthly / Yearly / Lifetime), renewal date, benefit checklist, and "Manage subscription" deep-link to Play Store.
+
+### AdMob placement rules (`/app/frontend/src/ads/native.native.tsx`)
+- **Interstitial cooldown**: 120s minimum between shows.
+- **Session cap**: max 4 interstitials per app session.
+- **Cold-start grace**: no interstitials for the first 45s after app open.
+- **First-day grace**: no interstitials within 24h of first install (persisted via `AsyncStorage` @ `@ads/install-ts`).
+- **Exponential-backoff reload** on interstitial load errors (5s → capped at 5 min).
+- **Session-reset** on app-foreground after >10 min in background.
+- Premium users continue to get zero ads (banner + interstitial + rewarded).
+
+### Testing (v6)
+- Web preview verified — paywall renders end-to-end without Metro crashes (hero, comparison table, plans placeholder, sticky CTA).
+- Interstitial suppression reasons are debug-logged (`cold_start`, `first_day`, `cooldown`, `session_cap`) for QA on native builds.
+
+### Explicit non-goals (v6)
+- Push Notifications (P1) — deferred, requires user's `google-services.json`.
+- Home-screen Android widgets (P2) — deferred, needs native module.
+- Wear OS companion (P2) — deferred.

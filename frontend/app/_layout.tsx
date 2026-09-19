@@ -7,24 +7,43 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "@/src/utils/keyboard";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { AuthProvider } from "@/src/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/src/contexts/AuthContext";
 import { AppLockGate } from "@/src/components/AppLockGate";
-import { initAdsOnce } from "@/src/ads/init";
 import { colors } from "@/src/theme";
+import { initializeRevenueCat, SubscriptionProvider } from "@/src/subscription/RevenueCat";
+import { AdStartup } from "@/src/ads/native";
 
 LogBox.ignoreAllLogs(true);
-
 SplashScreen.preventAutoHideAsync();
+
+// Module-scope RevenueCat init — MUST run once per app launch BEFORE any component mounts.
+try { initializeRevenueCat(); } catch (e) { console.warn("[RC] init failed:", e); }
+
+function InnerLayout() {
+  const { user } = useAuth();
+  return (
+    <SubscriptionProvider userId={user?.user_id}>
+      <View style={{ flex: 1, backgroundColor: colors.surface }}>
+        <AdStartup />
+        <AppLockGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.surface },
+              animation: "slide_from_right",
+            }}
+          />
+        </AppLockGate>
+      </View>
+    </SubscriptionProvider>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
 
   useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync();
-      // Initialize AdMob & preload interstitial once fonts are ready.
-      initAdsOnce();
-    }
+    if (loaded || error) SplashScreen.hideAsync();
   }, [loaded, error]);
 
   if (!loaded && !error) return null;
@@ -35,17 +54,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
           <AuthProvider>
-            <View style={{ flex: 1, backgroundColor: colors.surface }}>
-              <AppLockGate>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: colors.surface },
-                    animation: "slide_from_right",
-                  }}
-                />
-              </AppLockGate>
-            </View>
+            <InnerLayout />
           </AuthProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
