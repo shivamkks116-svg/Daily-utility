@@ -98,15 +98,33 @@ export function getFirebaseUnavailableReason(): string | null {
 /*                            Configure                                */
 /* ------------------------------------------------------------------ */
 
-const env: Record<string, string | undefined> =
-  ((globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env) ?? {};
-const WEB_CLIENT_ID = env.EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID || "";
+// Metro inlines `process.env.EXPO_PUBLIC_*` literals at bundle time — use
+// DIRECT access here, not via a proxy variable, so the string is baked in.
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID || "";
+
+// Load-time diagnostic — logs a length so we can confirm inlining without
+// leaking the actual client-id.
+console.log("[DailyHubAuth]", JSON.stringify({
+  event: "env_check",
+  webClientIdLength: WEB_CLIENT_ID.length,
+  webClientIdSuffix: WEB_CLIENT_ID ? WEB_CLIENT_ID.slice(-14) : "",
+}));
 
 let _configured = false;
 export function configureFirebaseAuth() {
-  if (!nativeReady || !GoogleSignin || _configured) return;
+  if (!nativeReady || !GoogleSignin) {
+    console.warn("[DailyHubAuth]", JSON.stringify({
+      event: "configure_skip",
+      reason: !nativeReady ? "not_native" : "google_signin_null",
+    }));
+    return;
+  }
+  if (_configured) return;
   if (!WEB_CLIENT_ID) {
-    console.warn("[DailyHubAuth] EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID missing — Google Sign-In disabled.");
+    console.warn("[DailyHubAuth]", JSON.stringify({
+      event: "configure_fail",
+      reason: "EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID not inlined — check .env and rebuild.",
+    }));
     return;
   }
   try {
@@ -151,7 +169,7 @@ function slim(u: unknown): FirebaseUserSlim | null {
 
 /** Safe dev-only logger. Never logs tokens or credentials. */
 function authLog(event: string, data?: Record<string, unknown>) {
-  if (!__DEV__ && !env.EXPO_PUBLIC_AUTH_DEBUG) return;
+  if (!__DEV__ && !process.env.EXPO_PUBLIC_AUTH_DEBUG) return;
   const safe: Record<string, unknown> = { event };
   if (data) {
     for (const [k, v] of Object.entries(data)) {
