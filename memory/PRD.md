@@ -327,3 +327,52 @@ Replaces Emergent-managed Google Auth with the user's own Firebase project (`dai
 - No changes to authentication, guest mode, Google login, or Email login.
 - Does not remove or modify any existing PDF/Image sub-tool.
 
+
+
+---
+
+## v7.2 Scope — RevenueCat Google Play Subscription Hardening
+
+Complete rewrite of `src/subscription/RevenueCat.tsx` to match user's exact Play Console configuration:
+
+### Configuration constants (must match RevenueCat dashboard EXACTLY)
+- `REVENUECAT_ENTITLEMENT_IDENTIFIER` = **`"premium"`** (was `"pro"` — corrected)
+- `REVENUECAT_PRODUCT_ID` = **`"dailyhub_premium"`** (new export for fallback lookups)
+- Base plan ID: `monthly` · Android package: `com.dailyutility.app`
+- API key: `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY` (direct `process.env.*` — Metro-inlined)
+
+### Provider hardening (`SubscriptionProvider`)
+- **AppState foreground listener** — auto-refresh on return to foreground.
+- **`offeringsError` state** exposed to UI (previously silently swallowed).
+- **`extractPackages(offs)`** — resilient lookup: `current` → named (`default`/`premium`/`dailyhub`/`main`) → flatten.
+- **`humanizePurchasesError(e)`** — maps `PURCHASES_ERROR_CODE` values to friendly copy while preserving raw code.
+- **Purchase safety check** — throws config-mismatch error if `purchasePackage()` returns but `entitlements.active["premium"]` is not active.
+- **Anonymous-user block** — refuses purchase if RC identity is `$RCAnonymousID:...`, forcing sign-in first.
+- **Diagnostic logs** at every step (`[RC]` tag): `init_attempt`, `configure_ok`, `identity_bound`, `offerings_loaded`, `customer_info_update`, `purchase_start/success`, `restore_done`.
+- **`useIsPremium()` hook** for gating features.
+
+### Premium screen updates (`app/premium/index.tsx`)
+- `packageMeta(pkg)` recognises `dailyhub_premium` product ID and lowercase `monthly` / `annual` identifiers.
+- Coming Soon block now shows `sub.offeringsError` (specific reason) with `testID="premium-offerings-error"`.
+
+### Purchase / entitlement guarantee
+- Premium status derived ONLY from `customerInfo.entitlements.active["premium"]` — never faked.
+- No hardcoded prices; every plan reads from `pkg.product.priceString`.
+
+### Testing (v7.2)
+- Web preview verified — Premium hero, comparison, and Coming Soon block with retry render cleanly.
+- Backend: no changes.
+- Native purchase testing requires signed APK — see Google Play checklist below.
+
+### Google Play Console — remaining setup required by user
+1. Play Console → Monetization → Subscriptions: create `dailyhub_premium` with base plan `monthly`, status **Active**.
+2. RevenueCat → Products: attach `dailyhub_premium` (base plan `monthly`).
+3. RevenueCat → Entitlements: `premium` entitlement must include the `dailyhub_premium` product.
+4. RevenueCat → Offerings: mark an offering **Current** with a package pointing at `dailyhub_premium`.
+5. Play Console → Testing → License testers: add tester Google account.
+6. Install a **signed** APK / internal-testing AAB — Debug APKs cannot purchase.
+
+### Explicit non-goals (v7.2)
+- No auto-provisioning of RC dashboard (must configure via web console).
+- No mock / fake premium unlock.
+- No server-side webhook verification (RC handles Play Billing).

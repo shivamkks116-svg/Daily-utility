@@ -110,16 +110,32 @@ function detectTrial(pkg: any): string | null {
 
 function packageMeta(pkg: any, allPackages: any[]): PackageMeta {
   const id = pkg?.identifier || pkg?.packageType || "";
+  const productId = pkg?.product?.identifier || "";
   const price = pkg?.product?.price || 0;
   const trialLabel = detectTrial(pkg);
 
-  if (id.includes("MONTHLY") || id === "$rc_monthly") {
-    return { key: "monthly", title: "Monthly", period: "/month", trialLabel: trialLabel ?? undefined };
+  // Recognise the dashboard-configured "monthly" package for `dailyhub_premium`.
+  const isMonthly =
+    id.includes("MONTHLY") ||
+    id === "$rc_monthly" ||
+    id.toLowerCase() === "monthly" ||
+    productId === "dailyhub_premium";
+
+  if (isMonthly) {
+    return {
+      key: "monthly",
+      title: "Monthly",
+      period: "/month",
+      trialLabel: trialLabel ?? undefined,
+    };
   }
-  if (id.includes("ANNUAL") || id === "$rc_annual") {
+  if (id.includes("ANNUAL") || id === "$rc_annual" || id.toLowerCase() === "annual") {
     // Compute dynamic savings vs monthly
     const monthly = allPackages.find(
-      (p) => (p?.identifier || "").includes("MONTHLY") || p?.identifier === "$rc_monthly",
+      (p) =>
+        (p?.identifier || "").includes("MONTHLY") ||
+        p?.identifier === "$rc_monthly" ||
+        (p?.identifier || "").toLowerCase() === "monthly",
     );
     let savings = "Save 40%";
     let monthlyEquivalent: string | undefined;
@@ -344,8 +360,12 @@ export default function PremiumScreen() {
             <Text style={styles.unavailable}>
               We&apos;re finalising subscription products with Google Play. Premium plans will appear here as soon as they&apos;re live.
             </Text>
-            {sub.identityError ? (
-              <Text style={styles.unavailableHint}>Details: {sub.identityError}</Text>
+            {sub.offeringsError ? (
+              <Text style={styles.unavailableHint} testID="premium-offerings-error">
+                {sub.offeringsError}
+              </Text>
+            ) : sub.identityError ? (
+              <Text style={styles.unavailableHint}>Identity: {sub.identityError}</Text>
             ) : null}
             <Pressable
               onPress={() => sub.refresh()}
