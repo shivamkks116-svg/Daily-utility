@@ -1,5 +1,6 @@
 /**
- * Firebase Authentication adapter (native builds only).
+ * Firebase Authentication adapter (native builds only) — uses the MODULAR
+ * API from `@react-native-firebase/auth` v22+.
  *
  *   • Google Sign-In via `@react-native-google-signin/google-signin`
  *   • Email/Password + password-reset + email-verification via
@@ -11,16 +12,9 @@
  */
 import { Platform } from "react-native";
 
-// Guard imports — never crash bundling on unsupported platforms.
-// On the actual Android APK, Platform.OS is "android" and native modules
-// are linked, so requires() succeed. On Expo Go, requires() throw and we
-// fall back to unavailable. We deliberately don't check
-// `Constants.executionEnvironment` here because some builds surface it as
-// undefined / "bare" inconsistently.
 const nativeReady = Platform.OS !== "web";
 
-// Load-time marker so we can see in adb logcat that the NATIVE variant was
-// picked by Metro (not the web stub).
+// Load-time marker (visible in adb logcat under ReactNativeJS).
 console.log("[DailyHubAuth]", JSON.stringify({
   event: "module_loaded",
   variant: "native",
@@ -28,20 +22,25 @@ console.log("[DailyHubAuth]", JSON.stringify({
   nativeReady,
 }));
 
-let auth: any = null;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let fbAuth: any = null;              // whole @react-native-firebase/auth module
 let GoogleSignin: any = null;
 let authLoadError: string | null = null;
 let googleLoadError: string | null = null;
 
 if (nativeReady) {
   try {
+    // v22+ uses named exports — DO NOT use `.default`.
      
-    auth = require("@react-native-firebase/auth").default;
+    fbAuth = require("@react-native-firebase/auth");
+    // Force-load the app entry so RNFBAppModule registers before any call.
+    try {  require("@react-native-firebase/app"); } catch { /* ok */ }
     console.log("[DailyHubAuth]", JSON.stringify({
       event: "require_ok",
       module: "@react-native-firebase/auth",
-      hasDefault: !!auth,
-      hasProvider: !!auth?.GoogleAuthProvider,
+      hasGetAuth: typeof fbAuth?.getAuth === "function",
+      hasProvider: typeof fbAuth?.GoogleAuthProvider !== "undefined",
+      keys: Object.keys(fbAuth || {}).slice(0, 8),
     }));
   } catch (e) {
     const err = e as { message?: string; code?: string };
@@ -53,6 +52,7 @@ if (nativeReady) {
       message: authLoadError,
     }));
   }
+
   try {
      
     GoogleSignin = require("@react-native-google-signin/google-signin").GoogleSignin;
@@ -72,14 +72,24 @@ if (nativeReady) {
     }));
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
-export const firebaseNativeAvailable = !!auth;
+// Consider "linked" only if the modular API surface is present.
+const authLinked =
+  !!fbAuth && typeof fbAuth.getAuth === "function" && !!fbAuth.GoogleAuthProvider;
+
+export const firebaseNativeAvailable = authLinked;
 
 /** Detailed reason why native firebase is unavailable (for debug UI). */
 export function getFirebaseUnavailableReason(): string | null {
-  if (auth && GoogleSignin) return null;
+  if (authLinked && GoogleSignin) return null;
   const parts: string[] = [];
-  if (!auth) parts.push(`auth: ${authLoadError || "not linked"}`);
+  if (!fbAuth) parts.push(`auth-module: ${authLoadError || "not resolved"}`);
+  else if (!authLinked) {
+    parts.push(
+      `auth-module: modular API missing (getAuth=${typeof fbAuth.getAuth}, GoogleAuthProvider=${typeof fbAuth.GoogleAuthProvider})`,
+    );
+  }
   if (!GoogleSignin) parts.push(`google-signin: ${googleLoadError || "not linked"}`);
   return parts.join(" | ");
 }
@@ -96,7 +106,7 @@ let _configured = false;
 export function configureFirebaseAuth() {
   if (!nativeReady || !GoogleSignin || _configured) return;
   if (!WEB_CLIENT_ID) {
-    console.warn("[Firebase] EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID missing — Google Sign-In disabled.");
+    console.warn("[DailyHubAuth] EXPO_PUBLIC_FIREBASE_WEB_CLIENT_ID missing — Google Sign-In disabled.");
     return;
   }
   try {
@@ -105,8 +115,12 @@ export function configureFirebaseAuth() {
       offlineAccess: false,
     });
     _configured = true;
+    console.log("[DailyHubAuth]", JSON.stringify({ event: "configure_ok" }));
   } catch (e) {
-    console.warn("[Firebase] GoogleSignin.configure failed:", e);
+    console.warn("[DailyHubAuth]", JSON.stringify({
+      event: "configure_fail",
+      message: (e as { message?: string })?.message || String(e),
+    }));
   }
 }
 
@@ -135,17 +149,12 @@ function slim(u: unknown): FirebaseUserSlim | null {
   };
 }
 
-/**
- * Safe dev-only logger.  Emits under the "DailyHubAuth" tag so it's trivial
- * to filter in adb logcat (`adb logcat -s "ReactNativeJS:*" | grep DailyHubAuth`).
- * NEVER logs tokens, credentials, or PII — only error codes / short messages.
- */
+/** Safe dev-only logger. Never logs tokens or credentials. */
 function authLog(event: string, data?: Record<string, unknown>) {
   if (!__DEV__ && !env.EXPO_PUBLIC_AUTH_DEBUG) return;
   const safe: Record<string, unknown> = { event };
   if (data) {
     for (const [k, v] of Object.entries(data)) {
-      // Explicitly redact anything token-shaped.
       if (/token|credential|password|secret|apikey|api_key/i.test(k)) {
         safe[k] = "[REDACTED]";
       } else if (typeof v === "string" && v.length > 120) {
@@ -155,48 +164,51 @@ function authLog(event: string, data?: Record<string, unknown>) {
       }
     }
   }
-  // eslint-disable-next-line no-console
+   
   console.log("[DailyHubAuth]", JSON.stringify(safe));
 }
 
-/** Map Google Sign-In error codes to human-actionable diagnostics. */
 function diagnoseGoogleError(e: unknown): { code: string; hint: string } {
   const err = e as { code?: string | number; message?: string; nativeErrorCode?: string };
   const code = String(err?.code ?? err?.nativeErrorCode ?? "UNKNOWN");
   const map: Record<string, string> = {
-    // react-native-google-signin string codes
     SIGN_IN_CANCELLED: "User cancelled the Google Sign-In sheet.",
     IN_PROGRESS: "Another Google Sign-In is already in progress.",
-    PLAY_SERVICES_NOT_AVAILABLE: "Google Play Services is missing or outdated on this device.",
+    PLAY_SERVICES_NOT_AVAILABLE: "Google Play Services missing or outdated.",
     SIGN_IN_REQUIRED: "User must sign in again.",
-    // GoogleSignInStatusCodes numeric codes
-    "10": "DEVELOPER_ERROR — SHA-1 fingerprint mismatch OR wrong Web Client ID. Check Firebase Console → Project settings → Your Android app → SHA certificate fingerprints, and confirm google-services.json was re-downloaded after adding SHA-1.",
-    "12500": "SIGN_IN_FAILED — Generic Google client failure. Usually caused by Play Services or config mismatch.",
+    "10": "DEVELOPER_ERROR — SHA-1 fingerprint mismatch OR wrong Web Client ID.",
+    "12500": "SIGN_IN_FAILED — Config mismatch or Play Services issue.",
     "12501": "SIGN_IN_CANCELLED — User closed the picker.",
-    "12502": "SIGN_IN_CURRENTLY_IN_PROGRESS — Another sign-in already running.",
-    "7": "NETWORK_ERROR — No network reachable.",
-    "8": "INTERNAL_ERROR — Google Play Services internal problem. Try restarting device.",
-    "16": "API_UNAVAILABLE — Play Services unavailable for this API.",
-    "17": "SIGN_IN_CANCELLED_BY_USER — User dismissed the Google account picker.",
+    "12502": "SIGN_IN_CURRENTLY_IN_PROGRESS.",
+    "7": "NETWORK_ERROR — no network reachable.",
+    "8": "INTERNAL_ERROR — Play Services internal problem.",
+    "16": "API_UNAVAILABLE — Play Services unavailable.",
+    "17": "SIGN_IN_CANCELLED_BY_USER.",
   };
   return { code, hint: map[code] || err?.message || "Unknown Google Sign-In error." };
 }
 
+/* ---------- Auth helpers using MODULAR API ---------- */
+
+function getAuthInstance() {
+  return fbAuth.getAuth();
+}
+
 export async function getFreshIdToken(forceRefresh = false): Promise<string | null> {
-  if (!auth) return null;
-  const u = auth().currentUser;
+  if (!authLinked) return null;
+  const auth = getAuthInstance();
+  const u = auth.currentUser;
   if (!u) return null;
   try { return await u.getIdToken(forceRefresh); } catch { return null; }
 }
 
-/** Sign in with Google — returns a fresh ID token to send to /auth/firebase. */
 export async function signInWithGoogle(): Promise<string> {
-  if (!auth || !GoogleSignin) throw new Error("Firebase native module unavailable (install a dev build).");
+  if (!authLinked || !GoogleSignin) {
+    throw new Error("Firebase native module unavailable (install a dev build).");
+  }
   configureFirebaseAuth();
-
   authLog("google:start", { webClientIdConfigured: !!WEB_CLIENT_ID });
 
-  // Ensure Play Services on Android (throws if missing).
   try {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     authLog("google:play_services_ok");
@@ -208,7 +220,6 @@ export async function signInWithGoogle(): Promise<string> {
     throw err;
   }
 
-  // Trigger native sign-in.
   let res: unknown;
   try {
     res = await GoogleSignin.signIn();
@@ -221,23 +232,19 @@ export async function signInWithGoogle(): Promise<string> {
     throw err;
   }
 
-  // v14+ returns { data: { idToken, user } }, older returns { idToken }
   const r = res as { data?: { idToken?: string }; idToken?: string };
   const idToken = r?.data?.idToken || r?.idToken;
   if (!idToken) {
     authLog("google:no_id_token", { shape: Object.keys((r || {}) as object) });
-    throw new Error("Google Sign-In returned no ID token. Check that Web Client ID matches the Firebase Web SDK config.");
+    throw new Error("Google Sign-In returned no ID token. Check Web Client ID.");
   }
-  authLog("google:got_id_token"); // NOTE: token itself never logged
+  authLog("google:got_id_token");
 
-  // Exchange with Firebase to bind identity.
   try {
-    const GoogleAuthProvider = auth.GoogleAuthProvider;
-    const credential = GoogleAuthProvider.credential(idToken);
-    const fbRes = await auth().signInWithCredential(credential);
+    const credential = fbAuth.GoogleAuthProvider.credential(idToken);
+    const auth = getAuthInstance();
+    const fbRes = await fbAuth.signInWithCredential(auth, credential);
     authLog("firebase:credential_ok", { uidPresent: !!fbRes?.user?.uid });
-
-    // Return the Firebase ID token (NOT the Google one) so backend can verify uniformly.
     const fbToken = await fbRes.user.getIdToken(true);
     authLog("firebase:id_token_minted");
     return fbToken;
@@ -248,73 +255,67 @@ export async function signInWithGoogle(): Promise<string> {
   }
 }
 
-/** Check whether an email is already registered (to decide sign-in vs sign-up). */
 export async function fetchEmailSignInMethods(email: string): Promise<string[]> {
-  if (!auth) throw new Error("Firebase unavailable.");
+  if (!authLinked) throw new Error("Firebase unavailable.");
   try {
-    const methods = await auth().fetchSignInMethodsForEmail(email.trim());
+    const auth = getAuthInstance();
+    const methods = await fbAuth.fetchSignInMethodsForEmail(auth, email.trim());
     return Array.isArray(methods) ? methods : [];
   } catch (e: unknown) {
-    // Rethrow with cleaner message
     const code = (e as { code?: string })?.code || "";
     if (code === "auth/invalid-email") throw new Error("Please enter a valid email address.");
     throw e as Error;
   }
 }
 
-/** Sign in with email/password — returns Firebase ID token. */
 export async function signInWithEmail(email: string, password: string): Promise<string> {
-  if (!auth) throw new Error("Firebase unavailable.");
-  const res = await auth().signInWithEmailAndPassword(email.trim(), password);
+  if (!authLinked) throw new Error("Firebase unavailable.");
+  const auth = getAuthInstance();
+  const res = await fbAuth.signInWithEmailAndPassword(auth, email.trim(), password);
   return await res.user.getIdToken(true);
 }
 
-/**
- * Sign up with email/password + displayName. Sends verification email
- * automatically. Returns Firebase ID token so backend can create the user.
- */
 export async function signUpWithEmail(
   email: string,
   password: string,
   displayName?: string,
 ): Promise<string> {
-  if (!auth) throw new Error("Firebase unavailable.");
-  const res = await auth().createUserWithEmailAndPassword(email.trim(), password);
+  if (!authLinked) throw new Error("Firebase unavailable.");
+  const auth = getAuthInstance();
+  const res = await fbAuth.createUserWithEmailAndPassword(auth, email.trim(), password);
   if (displayName) {
-    try { await res.user.updateProfile({ displayName }); } catch {}
+    try { await fbAuth.updateProfile(res.user, { displayName }); } catch {}
   }
-  // Fire-and-forget verification email
-  try { await res.user.sendEmailVerification(); } catch { /* non-fatal */ }
+  try { await fbAuth.sendEmailVerification(res.user); } catch { /* non-fatal */ }
   return await res.user.getIdToken(true);
 }
 
-/** Send a password-reset email via Firebase (auto-templated). */
 export async function sendPasswordReset(email: string): Promise<void> {
-  if (!auth) throw new Error("Firebase unavailable.");
-  await auth().sendPasswordResetEmail(email.trim());
+  if (!authLinked) throw new Error("Firebase unavailable.");
+  const auth = getAuthInstance();
+  await fbAuth.sendPasswordResetEmail(auth, email.trim());
 }
 
-/** Resend the email-verification email for the current user. */
 export async function resendEmailVerification(): Promise<void> {
-  if (!auth) throw new Error("Firebase unavailable.");
-  const u = auth().currentUser;
+  if (!authLinked) throw new Error("Firebase unavailable.");
+  const auth = getAuthInstance();
+  const u = auth.currentUser;
   if (!u) throw new Error("No signed-in Firebase user.");
-  await u.sendEmailVerification();
+  await fbAuth.sendEmailVerification(u);
 }
 
-/** Reload current user (used after they clicked the verification link). */
 export async function reloadCurrentUser(): Promise<FirebaseUserSlim | null> {
-  if (!auth) return null;
-  const u = auth().currentUser;
+  if (!authLinked) return null;
+  const auth = getAuthInstance();
+  const u = auth.currentUser;
   if (!u) return null;
   try { await u.reload(); } catch {}
-  return slim(auth().currentUser);
+  return slim(auth.currentUser);
 }
 
-/** Sign out from both Firebase and Google Sign-In (best-effort). */
 export async function firebaseSignOut(): Promise<void> {
-  if (!auth) return;
-  try { await auth().signOut(); } catch {}
+  if (!authLinked) return;
+  try { await fbAuth.signOut(getAuthInstance()); } catch {}
   try {
     if (GoogleSignin) {
       const has = await GoogleSignin.hasPreviousSignIn?.();
@@ -323,7 +324,6 @@ export async function firebaseSignOut(): Promise<void> {
   } catch {}
 }
 
-/** Translate raw Firebase error codes into human-friendly messages. */
 export function humanizeFirebaseError(e: unknown): string {
   const code = (e as { code?: string })?.code || "";
   const msg = (e as { message?: string })?.message || String(e);
@@ -337,6 +337,7 @@ export function humanizeFirebaseError(e: unknown): string {
     "auth/too-many-requests": "Too many attempts. Please try again in a few minutes.",
     "auth/network-request-failed": "Network error. Check your internet connection.",
     "auth/user-disabled": "This account has been disabled.",
+    "auth/operation-not-allowed": "Google/Email sign-in provider is disabled in Firebase Console.",
     "12501": "Google Sign-In was cancelled.",
     "SIGN_IN_CANCELLED": "Google Sign-In was cancelled.",
   };
