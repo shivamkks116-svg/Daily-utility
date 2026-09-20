@@ -339,10 +339,22 @@ export default function PremiumScreen() {
           </View>
         ) : cards.length === 0 ? (
           <View style={styles.unavailableBox}>
-            <Ionicons name="cloud-offline-outline" size={22} color={colors.onSurfaceTertiary} />
+            <Ionicons name="hourglass-outline" size={22} color={colors.brandPrimary} />
+            <Text style={styles.unavailableTitle}>Coming soon</Text>
             <Text style={styles.unavailable}>
-              Subscription options are unavailable right now. Please try again later.
+              We&apos;re finalising subscription products with Google Play. Premium plans will appear here as soon as they&apos;re live.
             </Text>
+            {sub.identityError ? (
+              <Text style={styles.unavailableHint}>Details: {sub.identityError}</Text>
+            ) : null}
+            <Pressable
+              onPress={() => sub.refresh()}
+              style={styles.retryBtn}
+              testID="premium-retry-btn"
+            >
+              <Ionicons name="refresh" size={14} color={colors.onSurface} />
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
           </View>
         ) : (
           <View style={styles.planWrap}>
@@ -725,7 +737,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  unavailableTitle: {
+    color: colors.onSurface,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.bold,
+    marginTop: 4,
+  },
   unavailable: { color: colors.onSurfaceTertiary, fontSize: fontSize.sm, textAlign: "center" },
+  unavailableHint: { color: colors.onSurfaceTertiary, fontSize: 11, textAlign: "center", fontStyle: "italic" },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  retryBtnText: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
 
   /* Testimonials */
   testiScroll: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: 4 },

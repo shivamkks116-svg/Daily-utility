@@ -12,6 +12,7 @@ import { tap } from "@/src/utils/haptics";
 import { storage } from "@/src/utils/storage";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { AdBanner } from "@/src/ads/AdBanner";
+import { useSubscription } from "@/src/subscription/RevenueCat";
 
 const HERO_BG =
   "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85";
@@ -19,12 +20,32 @@ const HERO_BG =
 type Quick = { key: string; label: string; icon: keyof typeof Ionicons.glyphMap; route: string; testID: string };
 
 const QUICK: Quick[] = [
-  { key: "notes",  label: "Notes",     icon: "document-text", route: "/notes",  testID: "quick-notes"  },
-  { key: "todos",  label: "To-Do",     icon: "checkbox",      route: "/todos",  testID: "quick-todos"  },
-  { key: "habits", label: "Habits",    icon: "leaf",          route: "/habits", testID: "quick-habits" },
-  { key: "focus",  label: "Focus",     icon: "timer",         route: "/focus",  testID: "quick-focus"  },
-  { key: "chat",   label: "AI Chat",   icon: "sparkles",      route: "/ai/chat",testID: "quick-ai-chat"},
-  { key: "expense",label: "Expenses",  icon: "wallet",        route: "/expenses",testID: "quick-expense"},
+  { key: "notes",  label: "Notes",     icon: "document-text",   route: "/notes",         testID: "quick-notes"    },
+  { key: "todos",  label: "To-Do",     icon: "checkbox",        route: "/todos",         testID: "quick-todos"    },
+  { key: "habits", label: "Habits",    icon: "leaf",            route: "/habits",        testID: "quick-habits"   },
+  { key: "focus",  label: "Focus",     icon: "timer",           route: "/focus",         testID: "quick-focus"    },
+  { key: "chat",   label: "AI Chat",   icon: "sparkles",        route: "/ai/chat",       testID: "quick-ai-chat"  },
+  { key: "expense",label: "Expenses",  icon: "wallet",          route: "/expenses",      testID: "quick-expense"  },
+  { key: "pdf",    label: "PDF Tools", icon: "document-attach", route: "/pdf-toolkit",   testID: "quick-pdf"      },
+  { key: "image",  label: "Image Tools",icon: "images",         route: "/image-toolkit", testID: "quick-image"    },
+  { key: "qr",     label: "QR Scanner",icon: "qr-code",         route: "/qr",            testID: "quick-qr"       },
+];
+
+/**
+ * Coming Soon = features NOT yet implemented anywhere in the app.
+ * Kept in sync with `soon: true` entries in app/(main)/tools.tsx.
+ * A feature that has a real route (like /pdf-toolkit or /premium) is a
+ * regular Quick Action / tool — never listed here.
+ */
+const COMING_SOON: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+  { icon: "moon-outline",       label: "Sleep Tracker" },
+  { icon: "fitness-outline",    label: "BMI Calculator" },
+  { icon: "flashlight-outline", label: "Flashlight" },
+  { icon: "compass-outline",    label: "Compass" },
+  { icon: "archive-outline",    label: "ZIP Extractor" },
+  { icon: "briefcase-outline",  label: "Resume Builder" },
+  { icon: "lock-closed-outline",label: "Secure Vault" },
+  { icon: "bar-chart-outline",  label: "Budget Planner" },
 ];
 
 const QUOTES = [
@@ -64,6 +85,7 @@ async function pushRecent(key: string) {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { isSubscribed } = useSubscription();
   const router = useRouter();
   const firstName = useMemo(() => (user?.name || "there").split(" ")[0], [user]);
   const today = useMemo(
@@ -308,20 +330,41 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Coming soon */}
+        {/* Premium promo — only shown when user is NOT subscribed */}
+        {!isSubscribed ? (
+          <View style={styles.section}>
+            <Pressable
+              testID="home-premium-cta"
+              onPress={() => { tap(); router.push("/premium"); }}
+              style={({ pressed }) => [styles.premiumCard, pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
+            >
+              <LinearGradient
+                colors={[colors.brandTertiary, "rgba(27,34,30,0.9)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.premiumIcon}>
+                <Ionicons name="diamond" size={22} color={colors.onBrandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.premiumTitle}>Go Premium</Text>
+                <Text style={styles.premiumSub}>Ad-free · Unlimited AI · Priority tools</Text>
+              </View>
+              <View style={styles.premiumChevron}>
+                <Ionicons name="arrow-forward" size={18} color={colors.brandPrimary} />
+              </View>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Coming soon — only genuinely unimplemented features. See COMING_SOON above. */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Coming soon</Text>
           <View style={styles.comingWrap}>
-            {[
-              { icon: "musical-notes-outline", label: "Voice Notes" },
-              { icon: "qr-code-outline", label: "QR Scanner" },
-              { icon: "medkit-outline", label: "Medicine Reminder" },
-              { icon: "document-attach-outline", label: "PDF Tools" },
-              { icon: "diamond-outline", label: "Premium" },
-              { icon: "moon-outline", label: "Sleep Tracker" },
-            ].map((c) => (
-              <View key={c.label} style={styles.comingChip}>
-                <Ionicons name={c.icon as any} size={14} color={colors.onBrandTertiary} />
+            {COMING_SOON.map((c) => (
+              <View key={c.label} style={styles.comingChip} testID={`coming-${c.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                <Ionicons name={c.icon} size={14} color={colors.onBrandTertiary} />
                 <Text style={styles.comingText}>{c.label}</Text>
               </View>
             ))}
@@ -458,4 +501,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary,
   },
   comingText: { color: colors.onBrandTertiary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  premiumCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.brandSecondary,
+    overflow: "hidden",
+  },
+  premiumIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumTitle: {
+    color: colors.onSurface,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.extrabold,
+    letterSpacing: -0.3,
+  },
+  premiumSub: {
+    color: colors.onSurfaceSecondary,
+    fontSize: fontSize.sm,
+    marginTop: 2,
+  },
+  premiumChevron: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.brandSecondary,
+  },
 });

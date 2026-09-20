@@ -295,3 +295,35 @@ Replaces Emergent-managed Google Auth with the user's own Firebase project (`dai
 - Firestore / Cloud Storage (backend still uses Mongo).
 - Firebase Admin service-account JSON (not needed for `verify_id_token`).
 
+
+---
+
+## v7.1 Scope — Home Screen Feature Cleanup + Premium Access Polish
+
+### Home screen (`/app/frontend/app/(main)/home.tsx`)
+- **Quick Actions expanded to 9 tiles** — added **PDF Tools** (`/pdf-toolkit`), **Image Tools** (`/image-toolkit`), and **QR Scanner** (`/qr`) to the 3-column grid. All these features are implemented; there is no reason for them to sit in Coming Soon.
+- **New "Go Premium" promo card** rendered just above the Coming Soon section — shown ONLY to non-subscribed users (via `useSubscription().isSubscribed`). Uses a `LinearGradient` background matching the app's dark green palette and deep-links to `/premium` with haptic tap.
+- **Coming Soon rewritten as `COMING_SOON` const** — filtered to genuinely unimplemented features only:
+  - Sleep Tracker, BMI Calculator, Flashlight, Compass, ZIP Extractor, Resume Builder, Secure Vault, Budget Planner
+- Removed misleading chips: PDF Tools, Premium, Voice Notes, QR Scanner, Medicine Reminder (all already implemented in the app).
+- Comment left in code to keep list in sync with `soon: true` entries in `tools.tsx`.
+
+### Premium screen (`/app/frontend/app/premium/index.tsx`)
+- When `packages.length === 0`, replaced the flat "unavailable" state with a proper **"Coming soon" block**:
+  - `hourglass-outline` icon in brand color
+  - Bold title "Coming soon"
+  - Explanatory copy: "We're finalising subscription products with Google Play. Premium plans will appear here as soon as they're live."
+  - Optional debug detail line if `sub.identityError` is set
+  - **Retry button** to re-invoke `sub.refresh()` (new `styles.retryBtn`)
+- The main Premium feature card in profile / home remains a proper Upgrade CTA — the "not available" message only appears inside the subscription action, never on the feature card itself (per the Play Store review guideline).
+
+### Testing (v7.1)
+- Web preview verified: home screen now shows 9 quick tiles, Go Premium promo, and only the 8 genuine Coming Soon chips.
+- Premium screen renders the new Coming Soon block with hourglass icon + Retry button when packages are empty.
+- Navigation from Home → PDF Toolkit (`/pdf-toolkit`), Image Toolkit (`/image-toolkit`), QR Scanner (`/qr`), Premium (`/premium`) all resolved via existing routes; no duplicate screens created.
+
+### Explicit non-goals (v7.1)
+- No changes to Tools screen (`tools.tsx`) — the shared feature registry stays screen-local.
+- No changes to authentication, guest mode, Google login, or Email login.
+- Does not remove or modify any existing PDF/Image sub-tool.
+
