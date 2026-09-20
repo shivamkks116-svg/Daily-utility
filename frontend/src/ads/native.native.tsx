@@ -31,16 +31,16 @@ if (nativeAndroid) {
 
 export const adsAvailable = !!admob;
 const TestIds = admob?.TestIds;
-const env: any = (globalThis as any)?.process?.env ?? {};
+// Direct access — Metro inlines `process.env.EXPO_PUBLIC_*` at bundle time.
 const useTests =
   __DEV__ ||
-  env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === "true" ||
-  env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === undefined;
+  process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === "true" ||
+  process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === undefined;
 
 export const adUnitIds = {
-  banner: useTests ? TestIds?.ADAPTIVE_BANNER : env.EXPO_PUBLIC_ADMOB_BANNER_ID,
-  interstitial: useTests ? TestIds?.INTERSTITIAL : env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID,
-  rewarded: useTests ? TestIds?.REWARDED : env.EXPO_PUBLIC_ADMOB_REWARDED_ID,
+  banner: useTests ? TestIds?.ADAPTIVE_BANNER : process.env.EXPO_PUBLIC_ADMOB_BANNER_ID,
+  interstitial: useTests ? TestIds?.INTERSTITIAL : process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID,
+  rewarded: useTests ? TestIds?.REWARDED : process.env.EXPO_PUBLIC_ADMOB_REWARDED_ID,
 };
 
 /* ------------------------------------------------------------------ */

@@ -32,24 +32,31 @@ export const REVENUECAT_ENTITLEMENT_IDENTIFIER = "pro";
 export const rcNativeAvailable = !!RC;
 
 function getApiKey(): string | null {
-  const env: any = (globalThis as any)?.process?.env ?? {};
-  if (Platform.OS === "ios") return env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || null;
-  if (Platform.OS === "android") return env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY || null;
-  return env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY || null;
+  // Direct access — Metro inlines `process.env.EXPO_PUBLIC_*` at bundle time.
+  if (Platform.OS === "ios") return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || null;
+  if (Platform.OS === "android") return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY || null;
+  return process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY || null;
 }
 
 let _configured = false;
 export function initializeRevenueCat() {
   if (!RC || _configured) return;
   const apiKey = getApiKey();
+  console.log("[RC]", JSON.stringify({
+    event: "init_attempt",
+    hasKey: !!apiKey,
+    keyLength: apiKey ? apiKey.length : 0,
+    platform: Platform.OS,
+  }));
   if (!apiKey) {
-    console.warn("[RC] Public API key missing — subscriptions disabled.");
+    console.warn("[RC] Public API key missing — check EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY in .env and rebuild.");
     return;
   }
   try {
     if (LOG_LEVEL) RC.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
     RC.configure({ apiKey });
     _configured = true;
+    console.log("[RC]", JSON.stringify({ event: "configure_ok" }));
   } catch (e) {
     console.warn("[RC] configure failed:", e);
   }

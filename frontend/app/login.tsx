@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ type EmailStep = "email" | "signin" | "signup" | "reset";
 
 export default function LoginScreen() {
   const {
+    user,
     signInWithGoogle,
     signInWithEmail,
     signUpWithEmail,
@@ -38,6 +39,18 @@ export default function LoginScreen() {
     humanizeFirebaseError,
   } = useAuth();
   const router = useRouter();
+
+  // React to auth state changes — the moment the user becomes non-null after
+  // any sign-in method (Google / Email / Guest), navigate away from /login
+  // without requiring the user to close & reopen the app.
+  useEffect(() => {
+    if (!user) return;
+    if (user.provider === "password" && user.email_verified === false) {
+      router.replace("/verify-email");
+    } else {
+      router.replace("/(main)/home");
+    }
+  }, [user, router]);
 
   const [loading, setLoading] = useState<"google" | "guest" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
