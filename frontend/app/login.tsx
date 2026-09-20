@@ -34,6 +34,7 @@ export default function LoginScreen() {
     sendPasswordReset,
     signInAsGuest,
     firebaseNativeAvailable,
+    firebaseUnavailableReason,
     humanizeFirebaseError,
   } = useAuth();
   const router = useRouter();
@@ -68,9 +69,9 @@ export default function LoginScreen() {
   async function handleGoogle() {
     setError(null);
     if (!firebaseNativeAvailable) {
-      setError(
-        "Firebase native module unavailable. Rebuild the APK — ensure prebuild ran and google-services.json is present.",
-      );
+      // Surface the exact underlying reason so we can debug from a screenshot.
+      const reason = firebaseUnavailableReason || "auth module null";
+      setError(`Firebase native module unavailable: ${reason}`);
       return;
     }
     setLoading("google");
@@ -80,7 +81,6 @@ export default function LoginScreen() {
     } catch (e) {
       const err = e as { message?: string; code?: string };
       const codePart = err?.code ? ` (code: ${err.code})` : "";
-      // Show the enriched Google/Firebase message + code, but never a token.
       setError(`${err?.message || humanizeFirebaseError(e)}${codePart}`);
     } finally {
       setLoading(null);

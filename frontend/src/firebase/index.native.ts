@@ -19,26 +19,70 @@ import { Platform } from "react-native";
 // undefined / "bare" inconsistently.
 const nativeReady = Platform.OS !== "web";
 
+// Load-time marker so we can see in adb logcat that the NATIVE variant was
+// picked by Metro (not the web stub).
+console.log("[DailyHubAuth]", JSON.stringify({
+  event: "module_loaded",
+  variant: "native",
+  platform: Platform.OS,
+  nativeReady,
+}));
+
 let auth: any = null;
 let GoogleSignin: any = null;
+let authLoadError: string | null = null;
+let googleLoadError: string | null = null;
 
 if (nativeReady) {
   try {
-    // The RNFirebase v22 API — default export is a function returning the auth module.
      
     auth = require("@react-native-firebase/auth").default;
+    console.log("[DailyHubAuth]", JSON.stringify({
+      event: "require_ok",
+      module: "@react-native-firebase/auth",
+      hasDefault: !!auth,
+      hasProvider: !!auth?.GoogleAuthProvider,
+    }));
   } catch (e) {
-    console.warn("[Firebase] @react-native-firebase/auth unavailable:", e);
+    const err = e as { message?: string; code?: string };
+    authLoadError = err?.message || String(e);
+    console.warn("[DailyHubAuth]", JSON.stringify({
+      event: "require_fail",
+      module: "@react-native-firebase/auth",
+      code: err?.code,
+      message: authLoadError,
+    }));
   }
   try {
      
     GoogleSignin = require("@react-native-google-signin/google-signin").GoogleSignin;
+    console.log("[DailyHubAuth]", JSON.stringify({
+      event: "require_ok",
+      module: "@react-native-google-signin/google-signin",
+      hasGoogleSignin: !!GoogleSignin,
+    }));
   } catch (e) {
-    console.warn("[Firebase] @react-native-google-signin unavailable:", e);
+    const err = e as { message?: string; code?: string };
+    googleLoadError = err?.message || String(e);
+    console.warn("[DailyHubAuth]", JSON.stringify({
+      event: "require_fail",
+      module: "@react-native-google-signin/google-signin",
+      code: err?.code,
+      message: googleLoadError,
+    }));
   }
 }
 
 export const firebaseNativeAvailable = !!auth;
+
+/** Detailed reason why native firebase is unavailable (for debug UI). */
+export function getFirebaseUnavailableReason(): string | null {
+  if (auth && GoogleSignin) return null;
+  const parts: string[] = [];
+  if (!auth) parts.push(`auth: ${authLoadError || "not linked"}`);
+  if (!GoogleSignin) parts.push(`google-signin: ${googleLoadError || "not linked"}`);
+  return parts.join(" | ");
+}
 
 /* ------------------------------------------------------------------ */
 /*                            Configure                                */

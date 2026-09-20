@@ -14,6 +14,7 @@ import {
   getFreshIdToken,
   humanizeFirebaseError,
   firebaseNativeAvailable,
+  getFirebaseUnavailableReason,
 } from "@/src/firebase";
 
 export type AuthProviderKind = "google" | "password" | "guest";
@@ -32,6 +33,7 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   firebaseNativeAvailable: boolean;
+  firebaseUnavailableReason: string | null;
 
   // Firebase methods
   signInWithGoogle: () => Promise<void>;
@@ -217,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       firebaseNativeAvailable,
+      firebaseUnavailableReason: getFirebaseUnavailableReason(),
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,

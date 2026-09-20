@@ -13,6 +13,17 @@ export type FirebaseUserSlim = {
 
 export const firebaseNativeAvailable = false;
 
+// Load-time marker: if you see this on Android in adb logcat, Metro is
+// incorrectly resolving the web stub instead of `.native.ts`.
+console.log("[DailyHubAuth]", JSON.stringify({
+  event: "module_loaded",
+  variant: "web-stub",
+}));
+
+export function getFirebaseUnavailableReason(): string | null {
+  return "Web stub loaded — Firebase native module is not available on this platform.";
+}
+
 export function configureFirebaseAuth(): void { /* no-op */ }
 
 function unsupported(): never {
