@@ -333,3 +333,66 @@ export async function pdfToDocx(uri: string): Promise<{ uri: string; size: numbe
   const dest = await writeBase64(uniqueName("converted", "docx"), res.file_base64);
   return { uri: dest, size: res.size, chars: res.chars };
 }
+
+
+/** Export a PDF's text (with optional OCR for scanned pages) to a .docx. */
+export async function pdfToDocxWithOcr(
+  uri: string,
+  useOcr: "auto" | "force" | "off" = "auto",
+): Promise<{ uri: string; size: number; chars: number; usedOcr: boolean; ocrPages: number }> {
+  const res = await callPdfApi<
+    { use_ocr: string },
+    { file_base64: string; size: number; chars: number; used_ocr: boolean; ocr_pages: number }
+  >("/pdf/to-docx", uri, { use_ocr: useOcr });
+  const dest = await writeBase64(uniqueName("converted", "docx"), res.file_base64);
+  return { uri: dest, size: res.size, chars: res.chars, usedOcr: res.used_ocr, ocrPages: res.ocr_pages };
+}
+
+/** Stamp a signature image onto a specific PDF page. */
+export async function signPdf(
+  uri: string,
+  signatureB64: string,
+  opts: { page: number; xPct: number; yPct: number; widthPct?: number },
+): Promise<string> {
+  const res = await callPdfApi<
+    { signature_base64: string; page: number; x_pct: number; y_pct: number; width_pct: number },
+    { file_base64: string }
+  >("/pdf/sign", uri, {
+    signature_base64: signatureB64,
+    page: opts.page,
+    x_pct: opts.xPct,
+    y_pct: opts.yPct,
+    width_pct: opts.widthPct ?? 25,
+  });
+  return writeBase64(uniqueName("signed"), res.file_base64);
+}
+
+export type PDFField = {
+  name: string;
+  label: string;
+  type: "text" | "checkbox" | "radio" | "listbox" | "combobox" | "signature" | "unknown";
+  value: string;
+  page: number;
+  options: string[];
+  required: boolean;
+  max_len: number;
+};
+
+/** Enumerate PDF form fields. */
+export async function listPdfFields(uri: string): Promise<PDFField[]> {
+  const res = await callPdfApi<Record<string, never>, { fields: PDFField[] }>("/pdf/fields", uri, undefined);
+  return res.fields;
+}
+
+/** Fill PDF form fields with values. */
+export async function fillPdfFields(
+  uri: string,
+  values: Record<string, string | boolean>,
+): Promise<{ uri: string; filled: number }> {
+  const res = await callPdfApi<
+    { values: Record<string, unknown> },
+    { file_base64: string; filled: number }
+  >("/pdf/fill", uri, { values });
+  const dest = await writeBase64(uniqueName("filled"), res.file_base64);
+  return { uri: dest, filled: res.filled };
+}

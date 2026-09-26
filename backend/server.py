@@ -1466,13 +1466,19 @@ async def pdf_unlock(payload: PDFUnlockIn, authorization: Optional[str] = Header
 
 
 class PDFToDocxIn(PDFFileIn):
-    pass
+    use_ocr: Optional[str] = "auto"  # "auto" | "force" | "off"
 
 
 @api_router.post("/pdf/to-docx")
 async def pdf_to_docx(payload: PDFToDocxIn, authorization: Optional[str] = Header(default=None)):
-    """Extract text from a PDF and package it as a downloadable .docx."""
-    await require_user(authorization)
+    """Extract text from a PDF and package it as a downloadable .docx.
+
+    OCR strategy (`use_ocr`):
+      • `off`   → text-only extraction (fastest)
+      • `auto`  → per-page: if `get_text` returns < 40 chars, run Gemini vision OCR
+      • `force` → always OCR every page (slowest, most accurate on scans)
+    """
+    user = await require_user(authorization)
     if fitz is None:
         raise HTTPException(500, "PDF service unavailable")
     try:
@@ -1484,26 +1490,69 @@ async def pdf_to_docx(payload: PDFToDocxIn, authorization: Optional[str] = Heade
         doc = fitz.open(stream=data, filetype="pdf")
     except Exception as e:
         raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+
+    use_ocr = (payload.use_ocr or "auto").lower()
+    if use_ocr not in ("auto", "force", "off"):
+        use_ocr = "auto"
+
     docx_doc = Document()
     total_chars = 0
+    ocr_pages = 0
+
+    # Quota: an OCR page costs one image-OCR request.  Charge once up-front
+    # for OCR usage; text-only extraction is free.
+    if use_ocr != "off" and len(doc) > 0:
+        try:
+            await _check_and_increment_quota(user["user_id"])
+        except Exception:
+            pass
+
     try:
         for i, page in enumerate(doc):
-            blocks = page.get_text("blocks") or []
-            # blocks: (x0, y0, x1, y1, text, block_no, block_type)
-            for b in blocks:
-                text = (b[4] if len(b) > 4 else "").strip()
-                if not text:
+            text_blocks = page.get_text("blocks") or []
+            page_text = "\n".join((b[4] if len(b) > 4 else "").strip() for b in text_blocks if len(b) > 4)
+            page_text = page_text.strip()
+
+            do_ocr = use_ocr == "force" or (use_ocr == "auto" and len(page_text) < 40)
+
+            if do_ocr:
+                # Render page → PNG → Gemini OCR
+                try:
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
+                    b64_img = _b64.b64encode(pix.tobytes("png")).decode("ascii")
+                    ocr_text = await _gemini_vision(
+                        "You are an OCR engine. Return ONLY the exact text found in the image, preserving line breaks and structure. Do not add commentary. If the image has no readable text, respond with exactly: [NO_TEXT_DETECTED].",
+                        f"Extract all text from page {i + 1} of this PDF.",
+                        b64_img,
+                        "image/png",
+                    )
+                    if ocr_text and "[NO_TEXT_DETECTED]" not in ocr_text:
+                        page_text = ocr_text.strip()
+                        ocr_pages += 1
+                except HTTPException:
+                    raise
+                except Exception:
+                    logger.exception("OCR failed on page %d", i + 1)
+
+            if not page_text:
+                continue
+
+            # Heuristic: title-like first block on page 0 → heading.
+            paragraphs = page_text.split("\n\n") if "\n\n" in page_text else [page_text]
+            for j, para in enumerate(paragraphs):
+                para = para.strip()
+                if not para:
                     continue
-                # heuristic: short single-line blocks → heading; else paragraph.
-                if len(text) < 80 and "\n" not in text and i == 0:
-                    docx_doc.add_heading(text, level=2)
+                if i == 0 and j == 0 and len(para) < 80 and "\n" not in para:
+                    docx_doc.add_heading(para, level=2)
                 else:
-                    docx_doc.add_paragraph(text)
-                total_chars += len(text)
+                    docx_doc.add_paragraph(para)
+                total_chars += len(para)
             if i < len(doc) - 1:
                 docx_doc.add_page_break()
     finally:
         doc.close()
+
     from io import BytesIO
     buf = BytesIO()
     docx_doc.save(buf)
@@ -1511,8 +1560,145 @@ async def pdf_to_docx(payload: PDFToDocxIn, authorization: Optional[str] = Heade
         "file_base64": _b64.b64encode(buf.getvalue()).decode("ascii"),
         "size": buf.tell(),
         "chars": total_chars,
+        "used_ocr": ocr_pages > 0,
+        "ocr_pages": ocr_pages,
         "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }
+
+
+# ---------------- PDF Signature ----------------
+
+class PDFSignIn(PDFFileIn):
+    signature_base64: str = Field(..., description="Signature image bytes (PNG recommended)")
+    page: int = Field(..., ge=1, le=500)
+    x_pct: float = Field(..., ge=0, le=100, description="Left position as % of page width")
+    y_pct: float = Field(..., ge=0, le=100, description="Top position as % of page height")
+    width_pct: Optional[float] = 25.0  # signature width as % of page width
+
+
+@api_router.post("/pdf/sign")
+async def pdf_sign(payload: PDFSignIn, authorization: Optional[str] = Header(default=None)):
+    """Stamp a signature image onto a specific PDF page at (x_pct, y_pct)."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    sig_data = _decode_b64_bytes(payload.signature_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    if payload.page > len(doc):
+        raise HTTPException(400, f"Page {payload.page} out of range (PDF has {len(doc)} pages)")
+
+    try:
+        page = doc[payload.page - 1]
+        pw, ph = page.rect.width, page.rect.height
+        w = pw * ((payload.width_pct or 25.0) / 100.0)
+        # Try to preserve aspect ratio of the signature image
+        try:
+            from PIL import Image as _PIL
+            from io import BytesIO as _BIO
+            im = _PIL.open(_BIO(sig_data))
+            aspect = im.height / max(1, im.width)
+        except Exception:
+            aspect = 0.4
+        h = w * aspect
+        x = pw * (payload.x_pct / 100.0)
+        y = ph * (payload.y_pct / 100.0)
+        rect = fitz.Rect(x, y, x + w, y + h)
+        page.insert_image(rect, stream=sig_data, keep_proportion=True)
+        out = doc.tobytes(garbage=3, deflate=True)
+    finally:
+        doc.close()
+    return {
+        "file_base64": _b64.b64encode(out).decode("ascii"),
+        "size": len(out),
+    }
+
+
+# ---------------- PDF Form Fields ----------------
+
+WIDGET_TYPE_MAP = {
+    2: "text",       # PDF_WIDGET_TYPE_TEXT
+    3: "checkbox",   # PDF_WIDGET_TYPE_CHECKBOX
+    4: "radio",      # PDF_WIDGET_TYPE_RADIOBUTTON
+    5: "listbox",    # PDF_WIDGET_TYPE_LISTBOX
+    6: "combobox",   # PDF_WIDGET_TYPE_COMBOBOX
+    7: "signature",  # PDF_WIDGET_TYPE_SIGNATURE
+}
+
+
+@api_router.post("/pdf/fields")
+async def pdf_fields(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    """Enumerate every form field in a PDF (widgets)."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    fields: List[Dict[str, Any]] = []
+    try:
+        for i, page in enumerate(doc):
+            for w in (page.widgets() or []):
+                ftype = WIDGET_TYPE_MAP.get(getattr(w, "field_type", 0), "unknown")
+                fields.append({
+                    "name": w.field_name or f"field_{i}_{len(fields)}",
+                    "label": w.field_label or w.field_name or "",
+                    "type": ftype,
+                    "value": w.field_value or "",
+                    "page": i + 1,
+                    "options": list(getattr(w, "choice_values", None) or []) if ftype in ("listbox", "combobox", "radio") else [],
+                    "required": bool(getattr(w, "field_flags", 0) & 2),
+                    "max_len": int(getattr(w, "text_maxlen", 0) or 0),
+                })
+    finally:
+        doc.close()
+    return {"fields": fields, "count": len(fields)}
+
+
+class PDFFillIn(PDFFileIn):
+    values: Dict[str, Any]   # field_name -> value
+
+
+@api_router.post("/pdf/fill")
+async def pdf_fill(payload: PDFFillIn, authorization: Optional[str] = Header(default=None)):
+    """Fill PDF form fields with user-supplied values and flatten the result."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    filled = 0
+    try:
+        for page in doc:
+            for w in (page.widgets() or []):
+                if w.field_name and w.field_name in payload.values:
+                    val = payload.values[w.field_name]
+                    try:
+                        if getattr(w, "field_type", 0) == 3:  # checkbox
+                            w.field_value = bool(val)
+                        else:
+                            w.field_value = "" if val is None else str(val)
+                        w.update()
+                        filled += 1
+                    except Exception:
+                        logger.warning("Failed to fill field %s", w.field_name)
+        out = doc.tobytes(garbage=3, deflate=True)
+    finally:
+        doc.close()
+    return {
+        "file_base64": _b64.b64encode(out).decode("ascii"),
+        "size": len(out),
+        "filled": filled,
+    }
+
 
 
 

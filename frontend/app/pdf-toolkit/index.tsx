@@ -59,9 +59,10 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
     key: "edit",
     title: "Edit",
     tools: [
+      { key: "sign", label: "Sign PDF", desc: "Draw or upload a signature and stamp it", icon: "create", route: "/pdf-toolkit/sign" },
+      { key: "fill-form", label: "Fill Form", desc: "Detect form fields and type answers", icon: "reader", route: "/pdf-toolkit/fill-form" },
       { key: "watermark", label: "Add Watermark", desc: "Diagonal text over every page", icon: "water", route: "/pdf-toolkit/watermark" },
       { key: "pagenums", label: "Page Numbers", desc: "Header or footer numbering", icon: "list", route: "/pdf-toolkit/page-numbers" },
-      { key: "sign", label: "Signature", desc: "Coming in v1.1", icon: "create", soon: true },
     ],
   },
   {

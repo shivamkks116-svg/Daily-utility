@@ -412,3 +412,44 @@ Complete rewrite of `src/subscription/RevenueCat.tsx` to match user's exact Play
 ### Explicit non-goals (v7.3)
 - No OCR-to-DOCX for scanned PDFs.
 - No PDF signature drawing.
+
+---
+
+## v7.4 Scope — Scanned OCR + PDF Signature + Form Filling
+
+### Backend (`/app/backend/server.py`)
+- **`/api/pdf/to-docx` upgraded** — `use_ocr` param (`auto` | `force` | `off`). In `auto` mode, when a page's `get_text` returns fewer than 40 chars we render it at 2× DPI and run Gemini vision OCR (reuses `_gemini_vision` helper + Emergent LLM key). Response now includes `used_ocr` and `ocr_pages` counters.
+- **`POST /api/pdf/sign`** — stamps a signature PNG onto page N at (x_pct, y_pct) with configurable width_pct. Uses `PIL` to preserve signature aspect ratio and `page.insert_image` for the composite.
+- **`POST /api/pdf/fields`** — enumerates every AcroForm widget (text, checkbox, radio, listbox, combobox, signature) with name, label, page, value, options, required, max_len.
+- **`POST /api/pdf/fill`** — fills fields with user-supplied values and returns the updated PDF.
+
+### Frontend helpers (`/app/frontend/src/utils/pdf/index.ts`)
+- `pdfToDocxWithOcr(uri, "auto"|"force"|"off")`
+- `signPdf(uri, sigB64, {page, xPct, yPct, widthPct})`
+- `listPdfFields(uri)` + `fillPdfFields(uri, values)`
+- Shared `PDFField` type export
+
+### Frontend screens
+- **`/pdf-toolkit/to-docx`** — now shows an OCR mode segmented picker (`Auto` / `Force OCR` / `Text only`) + hint. Success card displays an `OCR used on N scanned pages` badge.
+- **`/pdf-toolkit/sign`** (new) — Draw signature with `react-native-svg` + `PanResponder`, OR upload PNG via `expo-image-picker`; `react-native-view-shot` captures the drawn SVG to base64; 3×3 position grid (TL/TC/TR … BR); page number stepper; signature width segments 15% / 25% / 40%.
+- **`/pdf-toolkit/fill-form`** (new) — Detect fields button → dynamic form (`TextInput` for text/signature, checkbox toggle for booleans, pill selector for lists/combos); shows page + type chip on every field; empty-state when no fields.
+
+### PDF Toolkit index (`/app/frontend/app/pdf-toolkit/index.tsx`)
+- **Edit** category now includes **Sign PDF** and **Fill Form** as first-class tools (moved out of "coming soon"). Watermark + Page Numbers remain.
+- Total active PDF tools: 16 + AI Assistant.
+
+### Dependencies added
+- Frontend: `react-native-svg` (Expo SDK 54 compatible version), `react-native-view-shot`.
+- Backend: no new packages — reuses `pymupdf`, `python-docx`, `emergentintegrations`.
+
+### Testing (v7.4)
+- Web preview verified: `/pdf-toolkit/sign` and `/pdf-toolkit/fill-form` render header + empty state cleanly; toolkit index shows both under Edit.
+- Lint clean.
+- Native purchase / OCR flow: requires signed APK on device (network + Emergent LLM key access).
+
+### Explicit non-goals (v7.4)
+- No tap-to-place signature preview on the PDF page (uses a 3×3 position grid instead).
+- No multi-page signature stamping in one pass.
+- No editable existing form values (fields load with their default, user can override).
+- No PDF form CREATION (only detection and filling of existing AcroForm PDFs).
+
