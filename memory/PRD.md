@@ -376,3 +376,39 @@ Complete rewrite of `src/subscription/RevenueCat.tsx` to match user's exact Play
 - No auto-provisioning of RC dashboard (must configure via web console).
 - No mock / fake premium unlock.
 - No server-side webhook verification (RC handles Play Billing).
+
+
+---
+
+## v7.3 Scope — PDF Toolkit Expansion (Reader + Compress + Protect + Word Export + Image Export)
+
+### Backend endpoints (`/app/backend/server.py`)
+- `POST /api/pdf/to-images` — renders every page to PNG/JPEG at configurable DPI (72-300) using PyMuPDF
+- `POST /api/pdf/compress` — PyMuPDF `tobytes(garbage=4, deflate=True, clean=True, deflate_images=True, deflate_fonts=True)`
+- `POST /api/pdf/protect` — AES-256 password protection with permissions
+- `POST /api/pdf/unlock` — removes password after `authenticate()`; 401 on wrong password
+- `POST /api/pdf/to-docx` — text blocks → .docx via `python-docx`
+- Added: `python-docx==1.2.0`
+
+### Frontend (`/app/frontend/src/utils/pdf/index.ts`)
+- New helpers: `pdfToImages`, `compressPdf`, `protectPdf`, `unlockPdf`, `pdfToDocx`
+- Shared `callPdfApi<TReq, TRes>()` utility
+
+### Frontend screens (5 new)
+- `/pdf-toolkit/reader` — page-by-page viewer with share
+- `/pdf-toolkit/to-images` — PNG/JPEG export (DPI + format toggles)
+- `/pdf-toolkit/compress` — original vs compressed stats + share
+- `/pdf-toolkit/protect` — Protect/Unlock segmented mode with confirm
+- `/pdf-toolkit/to-docx` — text → DOCX with stats
+
+### PDF Toolkit index
+- New category **Read & Convert** (Reader, PDF→Images, PDF→Word)
+- New category **Optimize & Secure** (Compress, Password Protect)
+
+### Testing (v7.3)
+- Web preview verified: all 6 categories render with 14+ active tools.
+- Backend returns 400 for invalid PDF, 401 for wrong unlock password, 413 for oversize.
+
+### Explicit non-goals (v7.3)
+- No OCR-to-DOCX for scanned PDFs.
+- No PDF signature drawing.

@@ -30,12 +30,29 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
     ],
   },
   {
+    key: "read",
+    title: "Read & Convert",
+    tools: [
+      { key: "reader", label: "PDF Reader", desc: "View any PDF page-by-page", icon: "eye", route: "/pdf-toolkit/reader" },
+      { key: "to-images", label: "PDF → Images", desc: "Export each page as PNG or JPEG", icon: "image", route: "/pdf-toolkit/to-images" },
+      { key: "to-docx", label: "PDF → Word", desc: "Extract text to a .docx file", icon: "document", route: "/pdf-toolkit/to-docx" },
+    ],
+  },
+  {
     key: "organize",
     title: "Organize",
     tools: [
       { key: "merge", label: "Merge PDFs", desc: "Combine multiple PDFs in order", icon: "git-merge", route: "/pdf-toolkit/merge" },
       { key: "split", label: "Split PDF", desc: "Break a PDF into custom ranges", icon: "cut", route: "/pdf-toolkit/split" },
       { key: "organize", label: "Delete · Rotate · Extract", desc: "Reorder or drop pages", icon: "layers", route: "/pdf-toolkit/organize" },
+    ],
+  },
+  {
+    key: "optimize",
+    title: "Optimize & Secure",
+    tools: [
+      { key: "compress", label: "Compress PDF", desc: "Shrink file size without opening it", icon: "archive", route: "/pdf-toolkit/compress" },
+      { key: "protect", label: "Password Protect", desc: "Encrypt or unlock a PDF", icon: "lock-closed", route: "/pdf-toolkit/protect" },
     ],
   },
   {

@@ -1317,6 +1317,205 @@ async def pdf_translate(payload: PDFTranslateIn, authorization: Optional[str] = 
     return {"translation": result, "target_language": target}
 
 
+# ---------------- New PDF utility endpoints (v7.3) ----------------
+
+class PDFProtectIn(PDFFileIn):
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class PDFUnlockIn(PDFFileIn):
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class PDFCompressIn(PDFFileIn):
+    quality: Optional[int] = 75   # 30..90 — used for embedded image recompression
+
+
+class PDFToImagesIn(PDFFileIn):
+    dpi: Optional[int] = 150       # 72..300
+    format: Optional[str] = "png"  # png | jpeg
+    max_pages: Optional[int] = 100
+
+
+@api_router.post("/pdf/to-images")
+async def pdf_to_images(payload: PDFToImagesIn, authorization: Optional[str] = Header(default=None)):
+    """Render every page of a PDF to base64 PNG/JPEG for in-app viewing / export."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    dpi = max(72, min(int(payload.dpi or 150), 300))
+    fmt = (payload.format or "png").lower()
+    if fmt not in ("png", "jpeg", "jpg"):
+        raise HTTPException(400, "format must be png or jpeg")
+    max_pages = max(1, min(int(payload.max_pages or 100), 200))
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    images: List[Dict[str, Any]] = []
+    total = min(len(doc), max_pages)
+    try:
+        zoom = dpi / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+        for i in range(total):
+            page = doc[i]
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+            if fmt in ("jpeg", "jpg"):
+                buf = pix.tobytes("jpeg", jpg_quality=85)
+                mime = "image/jpeg"
+            else:
+                buf = pix.tobytes("png")
+                mime = "image/png"
+            images.append({
+                "page": i + 1,
+                "width": pix.width,
+                "height": pix.height,
+                "mime": mime,
+                "data": _b64.b64encode(buf).decode("ascii"),
+            })
+    finally:
+        doc.close()
+    return {"pages": images, "total_pages": total, "dpi": dpi, "format": fmt}
+
+
+@api_router.post("/pdf/compress")
+async def pdf_compress(payload: PDFCompressIn, authorization: Optional[str] = Header(default=None)):
+    """Compress a PDF using PyMuPDF's incremental garbage collector + deflate."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    original_size = len(data)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    try:
+        # garbage=4 = remove duplicate/unused objects · deflate=True = zlib streams
+        # clean=True = tidy content streams
+        out = doc.tobytes(garbage=4, deflate=True, clean=True, deflate_images=True, deflate_fonts=True)
+    finally:
+        doc.close()
+    new_size = len(out)
+    return {
+        "file_base64": _b64.b64encode(out).decode("ascii"),
+        "original_size": original_size,
+        "compressed_size": new_size,
+        "saved_bytes": max(0, original_size - new_size),
+        "saved_pct": round(max(0, original_size - new_size) / original_size * 100, 1) if original_size else 0,
+    }
+
+
+@api_router.post("/pdf/protect")
+async def pdf_protect(payload: PDFProtectIn, authorization: Optional[str] = Header(default=None)):
+    """Password-protect a PDF with AES-256 encryption."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    try:
+        perm = int(
+            fitz.PDF_PERM_ACCESSIBILITY
+            | fitz.PDF_PERM_PRINT
+            | fitz.PDF_PERM_COPY
+            | fitz.PDF_PERM_ANNOTATE
+        )
+        out = doc.tobytes(
+            encryption=fitz.PDF_ENCRYPT_AES_256,
+            user_pw=payload.password,
+            owner_pw=payload.password,
+            permissions=perm,
+        )
+    finally:
+        doc.close()
+    return {
+        "file_base64": _b64.b64encode(out).decode("ascii"),
+        "size": len(out),
+        "encrypted": True,
+    }
+
+
+@api_router.post("/pdf/unlock")
+async def pdf_unlock(payload: PDFUnlockIn, authorization: Optional[str] = Header(default=None)):
+    """Remove password from a PDF (requires the correct password)."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    try:
+        if doc.needs_pass:
+            if not doc.authenticate(payload.password):
+                raise HTTPException(401, "Incorrect password")
+        out = doc.tobytes(garbage=4, deflate=True)
+    finally:
+        doc.close()
+    return {
+        "file_base64": _b64.b64encode(out).decode("ascii"),
+        "size": len(out),
+        "encrypted": False,
+    }
+
+
+class PDFToDocxIn(PDFFileIn):
+    pass
+
+
+@api_router.post("/pdf/to-docx")
+async def pdf_to_docx(payload: PDFToDocxIn, authorization: Optional[str] = Header(default=None)):
+    """Extract text from a PDF and package it as a downloadable .docx."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    try:
+        from docx import Document
+    except Exception:
+        raise HTTPException(500, "DOCX writer not installed on server")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    docx_doc = Document()
+    total_chars = 0
+    try:
+        for i, page in enumerate(doc):
+            blocks = page.get_text("blocks") or []
+            # blocks: (x0, y0, x1, y1, text, block_no, block_type)
+            for b in blocks:
+                text = (b[4] if len(b) > 4 else "").strip()
+                if not text:
+                    continue
+                # heuristic: short single-line blocks → heading; else paragraph.
+                if len(text) < 80 and "\n" not in text and i == 0:
+                    docx_doc.add_heading(text, level=2)
+                else:
+                    docx_doc.add_paragraph(text)
+                total_chars += len(text)
+            if i < len(doc) - 1:
+                docx_doc.add_page_break()
+    finally:
+        doc.close()
+    from io import BytesIO
+    buf = BytesIO()
+    docx_doc.save(buf)
+    return {
+        "file_base64": _b64.b64encode(buf.getvalue()).decode("ascii"),
+        "size": buf.tell(),
+        "chars": total_chars,
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+
+
+
 # ---------------- Image AI (OCR + Describe) ----------------
 class ImageFileIn(BaseModel):
     image_base64: str = Field(..., description="Image bytes as base64 or data URL")

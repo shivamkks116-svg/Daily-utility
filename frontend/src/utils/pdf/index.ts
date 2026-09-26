@@ -240,3 +240,96 @@ export async function cleanCache(): Promise<void> {
 }
 
 export { CACHE as PDF_CACHE_DIR };
+
+
+/* ============================================================
+ * Server-backed operations (v7.3)
+ * =========================================================== */
+
+import { api } from "@/src/api/client";
+
+/** Base64-encode a file:// URI and stream it to `/api/pdf/*`. */
+async function callPdfApi<TReq extends object, TRes>(
+  path: string,
+  uri: string,
+  extra: TReq | undefined,
+): Promise<TRes> {
+  const file_base64 = await readPdfBase64(uri);
+  return api<TRes>(path, {
+    method: "POST",
+    body: { file_base64, ...(extra || {}) } as unknown as Record<string, unknown>,
+  });
+}
+
+/** Write a base64 payload to the cache and return its file:// URI. */
+async function writeBase64(name: string, b64: string): Promise<string> {
+  await ensureCache();
+  const dest = CACHE + name;
+  await FileSystem.writeAsStringAsync(dest, b64, { encoding: FileSystem.EncodingType.Base64 });
+  return dest;
+}
+
+/** Convert every page of a PDF to PNG/JPEG. Returns file:// URIs. */
+export async function pdfToImages(
+  uri: string,
+  opts: { dpi?: number; format?: "png" | "jpeg" } = {},
+): Promise<{ page: number; uri: string; width: number; height: number }[]> {
+  const res = await callPdfApi<
+    { dpi?: number; format?: string },
+    { pages: { page: number; data: string; width: number; height: number; mime: string }[] }
+  >("/pdf/to-images", uri, { dpi: opts.dpi ?? 150, format: opts.format ?? "png" });
+  const out: { page: number; uri: string; width: number; height: number }[] = [];
+  for (const p of res.pages) {
+    const ext = p.mime === "image/jpeg" ? "jpg" : "png";
+    const dest = await writeBase64(uniqueName(`page-${p.page}`, ext), p.data);
+    out.push({ page: p.page, uri: dest, width: p.width, height: p.height });
+  }
+  return out;
+}
+
+/** Compress a PDF. Returns file:// URI + size stats. */
+export async function compressPdf(uri: string): Promise<{
+  uri: string;
+  originalSize: number;
+  compressedSize: number;
+  savedBytes: number;
+  savedPct: number;
+}> {
+  const res = await callPdfApi<
+    Record<string, never>,
+    { file_base64: string; original_size: number; compressed_size: number; saved_bytes: number; saved_pct: number }
+  >("/pdf/compress", uri, undefined);
+  const dest = await writeBase64(uniqueName("compressed"), res.file_base64);
+  return {
+    uri: dest,
+    originalSize: res.original_size,
+    compressedSize: res.compressed_size,
+    savedBytes: res.saved_bytes,
+    savedPct: res.saved_pct,
+  };
+}
+
+/** Password-protect a PDF with AES-256. */
+export async function protectPdf(uri: string, password: string): Promise<string> {
+  const res = await callPdfApi<{ password: string }, { file_base64: string }>(
+    "/pdf/protect", uri, { password },
+  );
+  return writeBase64(uniqueName("locked"), res.file_base64);
+}
+
+/** Remove a PDF password (must be the correct password). */
+export async function unlockPdf(uri: string, password: string): Promise<string> {
+  const res = await callPdfApi<{ password: string }, { file_base64: string }>(
+    "/pdf/unlock", uri, { password },
+  );
+  return writeBase64(uniqueName("unlocked"), res.file_base64);
+}
+
+/** Export a PDF's text to a downloadable .docx file. */
+export async function pdfToDocx(uri: string): Promise<{ uri: string; size: number; chars: number }> {
+  const res = await callPdfApi<Record<string, never>, { file_base64: string; size: number; chars: number }>(
+    "/pdf/to-docx", uri, undefined,
+  );
+  const dest = await writeBase64(uniqueName("converted", "docx"), res.file_base64);
+  return { uri: dest, size: res.size, chars: res.chars };
+}
