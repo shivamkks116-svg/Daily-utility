@@ -536,3 +536,43 @@ User reported "Read and Convert options work nahi kar rahe" — screenshot showe
 ### Verified
 - Web preview at `/pdf-toolkit/reader` now shows the "Choose PDF" primary button.
 - No other screen affected (they use the old `actionLabel`/`onAction` API which still works).
+
+## v7.8 — Shared Images, PDF-from-URL, Recent PDFs, Zoom & Fit-to-Width (Jun 2026)
+
+### 1. Shared Images to Toolkit
+- **`/app/frontend/src/utils/image/import.ts`** (new) — `importImageFromUri()` detects JPEG/PNG/GIF/WEBP/BMP magics and copies content:// URIs into app-private cache with a triple-fallback (copy → base64 read+write → abort).
+- **`/app/frontend/src/utils/pdf/sharedIntent.ts`** — after PDF detection fails, tries image import; on success redirects to `/image-toolkit/view`.
+- **`/app/frontend/app/image-toolkit/view.tsx`** (new) — shared-image viewer with preview + Share / Save to Gallery / Compress-and-Share / Open Image Toolkit quick actions.
+- Uses new `expo-media-library` (installed via `yarn expo install`) for gallery saves.
+
+### 2. PDF From URL
+- **`/app/frontend/src/utils/pdf/importFromUrl.ts`** (new) — `importPdfFromUrl()` with progress callback, size guard (200 MB max), `%PDF-` header validation, and friendly error messages for HTTP errors / private links / non-PDF content.
+- **`/app/frontend/src/components/PdfUrlImportModal.tsx`** (new) — modal with URL input, progress bar, cancel + import buttons.
+- **`/app/frontend/app/pdf-toolkit/index.tsx`** — added "Import PDF from URL" card below the search bar (hidden while searching). Successful imports are tracked in Recents and open in the Reader.
+
+### 3. Recent PDFs on Home
+- **`/app/frontend/app/(main)/home.tsx`** — new "Recent PDFs" horizontal strip renders when the toolkit `RecentEntry` store has any `kind: "pdf"` entries. Tapping a card opens the file directly in the PDF Reader via `sharedUri` params. Includes "All PDFs" shortcut to the toolkit hub.
+- **`/app/frontend/app/pdf-toolkit/reader.tsx`** — automatically adds every rendered PDF to Recents so the home strip stays fresh.
+- **`/app/frontend/app/pdf-toolkit/index.tsx`** — Recent row `onOpen` now routes into the Reader (was previously firing the Share sheet).
+
+### 4. Zoom & Fit-to-Width in Reader
+- **`/app/frontend/app/pdf-toolkit/reader.tsx`** — rewritten with:
+  - `Fit Width` (default) vs `Fit Page` toggle.
+  - Zoom levels `100% / 150% / 200%` cycled via a toolbar button; reset button appears whenever zoom > 1.
+  - When zoomed beyond content width, each page wraps in a horizontal `ScrollView` so users can pan the enlarged page.
+  - Live page indicator `X / N` computed from scroll offsets captured via each page's `onLayout`.
+  - Prev / Next buttons that scroll the outer `ScrollView` to the target page.
+
+### Packages added
+- `expo-media-library@18.2.1` — required for saving shared images to the device gallery.
+
+### Non-goals for this batch
+- No native pinch-gesture zoom (uses a toolbar-driven zoom that works identically on iOS + Android without gesture-handler complexity).
+- No batch PDF-from-URL (single URL per import; users can chain imports).
+- No thumbnail grid in Reader; page navigation is via prev/next + scroll.
+
+### Verify on real APK
+1. Home → tap **Recent PDFs card** → opens in Reader.
+2. PDF Toolkit → **Import PDF from URL** → paste a public PDF link → download progress → Reader opens the file → appears on home strip next launch.
+3. Share a PDF from Chrome / Drive → picks Reader; share an image from WhatsApp / Photos → picks new **Shared Image** viewer.
+4. In Reader: toggle Fit Width ↔ Fit Page; cycle zoom 100 → 150 → 200; use ▲/▼ page nav; horizontal-pan a zoomed page.

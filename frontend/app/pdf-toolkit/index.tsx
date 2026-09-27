@@ -5,8 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { ToolkitHeader, ToolCard, EmptyState } from "@/src/components/toolkit/Primitives";
-import { listRecents, listFavorites, toggleFavorite, formatBytes, formatDate, type RecentEntry, removeRecent } from "@/src/utils/toolkit/recents";
-import * as Sharing from "expo-sharing";
+import { listRecents, listFavorites, toggleFavorite, formatBytes, formatDate, type RecentEntry, removeRecent, addRecent } from "@/src/utils/toolkit/recents";
+import { PdfUrlImportModal } from "@/src/components/PdfUrlImportModal";
+import type { PickedPdf } from "@/src/utils/pdf/helpers";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -84,6 +85,15 @@ export default function PdfToolkitHub() {
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [favs, setFavs] = useState<string[]>([]);
   const [refresh, setRefresh] = useState(false);
+  const [urlModalOpen, setUrlModalOpen] = useState(false);
+
+  const onImportedFromUrl = useCallback(async (pdf: PickedPdf) => {
+    await addRecent({ kind: "pdf", uri: pdf.uri, name: pdf.name, size: pdf.size, tool: "Import URL" });
+    router.push({
+      pathname: "/pdf-toolkit/reader",
+      params: { sharedUri: pdf.uri, sharedName: pdf.name, sharedSize: String(pdf.size) },
+    });
+  }, [router]);
 
   const load = useCallback(async () => {
     const r = await listRecents();
@@ -141,6 +151,25 @@ export default function PdfToolkitHub() {
           </View>
         </View>
 
+        {/* Import from URL */}
+        {!query ? (
+          <View style={styles.urlWrap}>
+            <Pressable
+              onPress={() => setUrlModalOpen(true)}
+              style={({ pressed }) => [styles.urlCard, pressed && { opacity: 0.85 }]}
+            >
+              <View style={styles.urlIcon}>
+                <Ionicons name="link" size={18} color={colors.brandPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.urlTitle}>Import PDF from URL</Text>
+                <Text style={styles.urlSub}>Paste a link · we'll download and open it</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Favorites */}
         {favTools.length > 0 && !query ? (
           <View style={{ marginTop: spacing.md }}>
@@ -161,7 +190,7 @@ export default function PdfToolkitHub() {
           <View style={{ marginTop: spacing.md }}>
             <Text style={styles.sectionTitle}>🕘 Recent PDFs</Text>
             {recents.map(r => (
-              <RecentRow key={r.id} r={r} onOpen={() => Sharing.isAvailableAsync().then(ok => ok && Sharing.shareAsync(r.uri))} onDelete={async () => { await removeRecent(r.id); load(); }} />
+              <RecentRow key={r.id} r={r} onOpen={() => router.push({ pathname: "/pdf-toolkit/reader", params: { sharedUri: r.uri, sharedName: r.name, sharedSize: String(r.size || 0) } })} onDelete={async () => { await removeRecent(r.id); load(); }} />
             ))}
           </View>
         ) : null}
@@ -190,6 +219,11 @@ export default function PdfToolkitHub() {
           </View>
         ))}
       </ScrollView>
+      <PdfUrlImportModal
+        visible={urlModalOpen}
+        onClose={() => setUrlModalOpen(false)}
+        onImported={onImportedFromUrl}
+      />
     </SafeAreaView>
   );
 }
@@ -239,4 +273,25 @@ const styles = StyleSheet.create({
   recentName: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   recentMeta: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2 },
   recentAction: { padding: spacing.xs },
+  urlWrap: { paddingHorizontal: spacing.lg, marginTop: spacing.md },
+  urlCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  urlIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  urlTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
+  urlSub: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2 },
 });

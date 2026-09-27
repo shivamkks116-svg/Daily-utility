@@ -1,8 +1,8 @@
 /**
  * Shared-intent handler.
  *
- * When another app (WhatsApp, Files, Chrome, Drive, Gmail…) fires an
- * ACTION_VIEW or ACTION_SEND intent at DailyHub AI with a PDF URI,
+ * When another app (WhatsApp, Files, Chrome, Drive, Gmail, Photos…) fires an
+ * ACTION_VIEW or ACTION_SEND intent at DailyHub AI with a PDF or image URI,
  * Android delivers the intent's `data` URI through `expo-linking`.
  *
  * The catch: Expo Router treats that URI as a deep link. A raw
@@ -12,9 +12,9 @@
  * error page.
  *
  * This module hooks into the app's very first navigation cycle and, when
- * it detects a shared PDF/image URI (in either the raw or rewritten form),
- * imports the file into app-private cache and redirects to the correct
- * toolkit screen.
+ * it detects a shared PDF or image URI (in either the raw or rewritten
+ * form), imports the file into app-private cache and redirects to the
+ * correct toolkit screen.
  */
 import { useEffect } from "react";
 import { Platform } from "react-native";
@@ -22,14 +22,10 @@ import * as Linking from "expo-linking";
 import { router } from "expo-router";
 
 import { importPdfFromUri } from "@/src/utils/pdf/helpers";
+import { importImageFromUri } from "@/src/utils/image/import";
 
 const SCHEME = "dailyhubai://";
 
-/**
- * Detect if a URL looks like an Android content:// URI that was rewritten
- * with our app scheme. Every real Android content provider authority
- * uses reverse-DNS or a well-known SAF root, so we match those patterns.
- */
 function looksLikeStrippedContentUri(url: string): boolean {
   if (!url.startsWith(SCHEME)) return false;
   const rest = url.slice(SCHEME.length);
@@ -40,10 +36,6 @@ function looksLikeStrippedContentUri(url: string): boolean {
   );
 }
 
-/**
- * Normalize whatever URL the OS gave us into either a usable file/content
- * URI, or null if it isn't a shared file at all.
- */
 function normalizeIncomingUrl(url: string): string | null {
   if (!url) return null;
   if (url.startsWith("content://") || url.startsWith("file://")) return url;
@@ -59,16 +51,36 @@ async function processSharedUrl(rawUrl: string | null) {
   if (!uri) return;
 
   try {
-    // Try PDF first (validates %PDF- header inside importPdfFromUri).
+    // Try PDF first — `importPdfFromUri` validates the `%PDF-` magic header
+    // so it silently returns null for non-PDF content.
     const pdf = await importPdfFromUri(uri);
     if (pdf) {
       router.replace({
         pathname: "/pdf-toolkit/reader",
-        params: { sharedUri: pdf.uri, sharedName: pdf.name, sharedSize: String(pdf.size) },
+        params: {
+          sharedUri: pdf.uri,
+          sharedName: pdf.name,
+          sharedSize: String(pdf.size),
+        },
       });
       return;
     }
-    // Not a valid PDF — bounce user home so they don't see "Unmatched Route".
+
+    // Not a PDF? Try image — `importImageFromUri` checks JPEG/PNG/GIF/WEBP/BMP magics.
+    const img = await importImageFromUri(uri);
+    if (img) {
+      router.replace({
+        pathname: "/image-toolkit/view",
+        params: {
+          sharedUri: img.uri,
+          sharedName: img.name,
+          sharedSize: String(img.size),
+        },
+      });
+      return;
+    }
+
+    // Unknown content type — bounce home so we don't show "Unmatched Route".
     router.replace("/(main)/home");
   } catch (e) {
     console.warn("[sharedIntent] processing failed:", e);
@@ -76,12 +88,6 @@ async function processSharedUrl(rawUrl: string | null) {
   }
 }
 
-/**
- * Install a listener that handles both cold-start intents
- * (`Linking.getInitialURL`) and warm-start intents (subsequent `url` events).
- *
- * Runs once at the app root. Safe to call from any layout.
- */
 export function useSharedIntentHandler() {
   useEffect(() => {
     let cancelled = false;

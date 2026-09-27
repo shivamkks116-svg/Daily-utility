@@ -13,6 +13,7 @@ import { storage } from "@/src/utils/storage";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { AdBanner } from "@/src/ads/AdBanner";
 import { useSubscription } from "@/src/subscription/RevenueCat";
+import { listRecents, type RecentEntry, formatBytes } from "@/src/utils/toolkit/recents";
 
 const HERO_BG =
   "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85";
@@ -104,14 +105,16 @@ export default function HomeScreen() {
   const [habitsTotal, setHabitsTotal] = useState(0);
   const [streak, setStreak] = useState(0);
   const [recent, setRecent] = useState<RecentTool[]>([]);
+  const [recentPdfs, setRecentPdfs] = useState<RecentEntry[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [t, f, h, r] = await Promise.all([
+      const [t, f, h, r, rp] = await Promise.all([
         api<{ items: any[] }>("/todos").catch(() => ({ items: [] })),
         api<{ today_seconds: number }>("/focus").catch(() => ({ today_seconds: 0 })),
         api<{ items: any[] }>("/habits").catch(() => ({ items: [] })),
         loadRecent(),
+        listRecents().catch(() => [] as RecentEntry[]),
       ]);
       setTodos(t.items || []);
       setFocusToday(Math.round((f.today_seconds || 0) / 60));
@@ -135,6 +138,7 @@ export default function HomeScreen() {
       }
       setStreak(best);
       setRecent(r);
+      setRecentPdfs(rp.filter((x) => x.kind === "pdf").slice(0, 5));
     } finally {
       setRefreshing(false);
     }
@@ -301,6 +305,41 @@ export default function HomeScreen() {
                   </Pressable>
                 );
               })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {/* Recent PDFs — jumps straight into the in-app viewer */}
+        {recentPdfs.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Recent PDFs</Text>
+              <Pressable onPress={() => { tap(); router.push("/pdf-toolkit"); }}>
+                <Text style={styles.link}>All PDFs</Text>
+              </Pressable>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md, paddingRight: spacing.xl }}>
+              {recentPdfs.map((p) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() => {
+                    tap();
+                    router.push({
+                      pathname: "/pdf-toolkit/reader",
+                      params: { sharedUri: p.uri, sharedName: p.name, sharedSize: String(p.size || 0) },
+                    });
+                  }}
+                  style={({ pressed }) => [styles.pdfCard, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+                >
+                  <View style={styles.pdfCardIcon}>
+                    <Ionicons name="document" size={22} color={colors.brandPrimary} />
+                  </View>
+                  <Text style={styles.pdfCardName} numberOfLines={2}>{p.name}</Text>
+                  <Text style={styles.pdfCardMeta} numberOfLines={1}>
+                    {p.tool ? `${p.tool} · ` : ""}{p.size ? formatBytes(p.size) : ""}
+                  </Text>
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
         ) : null}
@@ -485,6 +524,35 @@ const styles = StyleSheet.create({
   },
   recentIcon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center" },
   recentLabel: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  pdfCard: {
+    width: 168,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+    justifyContent: "space-between",
+    minHeight: 128,
+  },
+  pdfCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.brandTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pdfCardName: {
+    color: colors.onSurface,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    lineHeight: 18,
+  },
+  pdfCardMeta: {
+    color: colors.onSurfaceTertiary,
+    fontSize: 11,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: TILE_GAP },
   tile: {
     width: "31.5%", aspectRatio: 1,
