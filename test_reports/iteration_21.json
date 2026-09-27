@@ -1,0 +1,28 @@
+{
+  "summary": "Static-config + JS-logic verification of Android PDF intent-filter + pickPdfs robustness fix. Frontend-only, no runtime Android intent testing (container cannot emulate Android 'Open with' picker). All 11 verification checks PASS: (1) app.json is valid JSON, (2) expo.android.intentFilters has exactly 3 entries (VIEW / SEND / SEND_MULTIPLE) with correct mimeTypes and 4 URI schemes (content/file/http/https) for VIEW, (3) android.versionCode = 3, (4) helpers.ts exports pickPdfs, importPdfFromUri, sharePdf, humanBytes and PickedPdf type, (5) DocumentPicker.type is now the broader Android array ['application/pdf','application/octet-stream','*/*'] (iOS still 'application/pdf'), (6) try/catch wraps getDocumentAsync with a helpful Alert on failure, (7) post-filter keeps only assets whose name.endsWith('.pdf') OR mimeType is application/pdf|application/x-pdf, (8) importPdfFromUri(uri, hintName?) returns Promise<PickedPdf|null> with graceful copy-fallback, (9) Metro bundler runs clean — no crashes, only pre-existing SDK-mismatch warnings, (10) /pdf-toolkit web preview renders fully (title 'DailyHub AI', tools list visible, no red screen, zero pageerrors), (11) All 13 pickPdfs callers (merge/split/watermark/organize/ai/sign/fill-form/to-images/compress/protect/to-docx/reader/page-numbers) use unchanged {multiple} signature — no regressions. NOTE: Actual Android 'Open with' behavior CANNOT be validated here — user must sideload the new APK (versionCode 3) on a physical Android device and confirm DailyHub AI appears in the system chooser for PDFs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_21.json"],
+  "action_items": [
+    "USER MUST rebuild + install the APK (versionCode 3) on a physical Android device to validate that the 'Open with' picker now lists DailyHub AI for PDFs. Static config is correct; runtime behavior can only be verified on-device.",
+    "Optional: add a listener (Linking.getInitialURL + addEventListener) in app/_layout.tsx that consumes incoming content://*.pdf intents via the new importPdfFromUri() helper — otherwise DailyHub AI will appear in the chooser but tapping it will only open the app without auto-importing the PDF.",
+    "Consider aligning SDK versions per bundler warnings (expo 54.0.36→54.0.37, expo-file-system 19.0.23→19.0.24, expo-constants 18.0.13→18.0.14, expo-local-authentication 17.0.8→17.0.9). Not blocking."
+  ],
+  "critical_code_review_comments": [
+    "helpers.ts:88 — regex `.replace(/(?<!\\.pdf)$/i, '')` is a no-op (replaces empty string with empty string). Harmless but dead code; can be removed. The actual .pdf extension check happens on line 89 which is correct.",
+    "helpers.ts:35 — using '*/*' as one of the accepted Android types effectively disables Android's native mime filtering, relying entirely on the JS post-filter. This is intentional per the fix (to handle providers reporting octet-stream) and is safe because the post-filter enforces .pdf extension or PDF mime. Acceptable tradeoff.",
+    "app.json:31–59 — intent-filter shape looks correct for Expo config plugin. VIEW filter combines mimeType-only and scheme+mimeType entries which Expo will merge into the AndroidManifest data entries correctly. Cannot verify final AndroidManifest.xml without an EAS build."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (11/11 static checks pass)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Bug fix is static (app.json + helpers.ts). Verifying actual Android 'Open with' chooser requires a physical Android device with the freshly-built APK (versionCode 3) installed. Container-level verification is limited to: JSON validity, intent-filter shape, TS logic correctness, Metro bundler health, and /pdf-toolkit web preview rendering — all of which PASS.",
+  "rca_of_issue": "Root cause of bug 1 ('DailyHub AI not shown in Open-with picker'): AndroidManifest had no <intent-filter> declaring PDF mime handling. Fix adds expo.android.intentFilters in app.json which the Expo build plugin merges into AndroidManifest.xml. Root cause of bug 2 ('Pick PDF unreliable'): Some Android providers (particularly Files by Google + certain OEM file managers) return content:// URIs with mimeType='application/octet-stream' for valid PDFs, causing the strict type:'application/pdf' filter in DocumentPicker to hide them. Fix broadens Android type filter and applies a JS-side post-filter on file extension + real PDF mimes, plus try/catch + user-facing troubleshooting Alert."
+}

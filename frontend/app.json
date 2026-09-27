@@ -26,8 +26,38 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.dailyutility.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [
+            { "mimeType": "application/pdf" },
+            { "mimeType": "application/x-pdf" },
+            { "scheme": "content", "mimeType": "application/pdf" },
+            { "scheme": "file", "mimeType": "application/pdf" },
+            { "scheme": "http", "mimeType": "application/pdf" },
+            { "scheme": "https", "mimeType": "application/pdf" }
+          ]
+        },
+        {
+          "action": "SEND",
+          "category": ["DEFAULT"],
+          "data": [
+            { "mimeType": "application/pdf" },
+            { "mimeType": "image/*" }
+          ]
+        },
+        {
+          "action": "SEND_MULTIPLE",
+          "category": ["DEFAULT"],
+          "data": [
+            { "mimeType": "application/pdf" },
+            { "mimeType": "image/*" }
+          ]
+        }
+      ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
