@@ -126,12 +126,15 @@ export function EmptyState({
   subtitle,
   actionLabel,
   onAction,
+  action,
 }: {
   icon?: IconName;
   title: string;
   subtitle?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Fully custom action node (e.g. a <PrimaryButton />). Overrides actionLabel/onAction if provided. */
+  action?: React.ReactNode;
 }) {
   return (
     <View style={e.wrap}>
@@ -140,7 +143,9 @@ export function EmptyState({
       </View>
       <Text style={e.title}>{title}</Text>
       {subtitle ? <Text style={e.sub}>{subtitle}</Text> : null}
-      {actionLabel && onAction ? (
+      {action ? (
+        <View style={e.actionWrap}>{action}</View>
+      ) : actionLabel && onAction ? (
         <Pressable onPress={onAction} style={({ pressed }) => [e.btn, pressed && { opacity: 0.8 }]}>
           <Text style={e.btnText}>{actionLabel}</Text>
         </Pressable>
@@ -156,6 +161,7 @@ const e = StyleSheet.create({
   sub: { color: colors.onSurfaceTertiary, fontSize: fontSize.sm, textAlign: "center", lineHeight: 20, marginBottom: spacing.md },
   btn: { backgroundColor: colors.brandPrimary, paddingVertical: spacing.md, paddingHorizontal: spacing.xl, borderRadius: radius.pill, marginTop: spacing.sm },
   btnText: { color: colors.onBrandPrimary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  actionWrap: { marginTop: spacing.sm, alignSelf: "stretch", paddingHorizontal: spacing.xl },
 });
 
 export function PrimaryButton({

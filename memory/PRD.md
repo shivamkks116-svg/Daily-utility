@@ -517,3 +517,22 @@ Example URL from user report:
 
 ### RevenueCat products error (unrelated)
 The `Could not find ProductDetails for pro.monthly, pro.annual` log is a **Play Console configuration** issue, not a code bug. The products must be created in Play Console → Monetization → Subscriptions with those exact IDs, and the app must be published to at least the Internal Testing track. See https://rev.cat/why-are-offerings-empty.
+
+## v7.7 — EmptyState "Choose PDF" button fix (Jun 2026)
+
+### Problem
+User reported "Read and Convert options work nahi kar rahe" — screenshot showed the **PDF Reader empty state with no "Choose PDF" button visible**. Same silent breakage on Compress, Protect, PDF→Word, PDF→Images, Sign, and Fill Form screens.
+
+### Root cause
+`EmptyState` primitive only supported `actionLabel` (string) + `onAction` (fn). But 7 PDF toolkit screens passed a full React node via `action={<PrimaryButton ... />}`. React silently drops unknown props, so the button never rendered → tapping the empty state did nothing.
+
+### Fix
+- **`/app/frontend/src/components/toolkit/Primitives.tsx`** — added `action?: React.ReactNode` prop that renders a custom action node (like `<PrimaryButton />`) when supplied. Existing `actionLabel`/`onAction` path kept for backward compat.
+- Added `actionWrap` style that stretches action content to the empty-state width for nicer alignment.
+
+### Files automatically fixed by this single change
+- `pdf-toolkit/reader.tsx`, `compress.tsx`, `protect.tsx`, `to-docx.tsx`, `to-images.tsx`, `sign.tsx`, `fill-form.tsx`
+
+### Verified
+- Web preview at `/pdf-toolkit/reader` now shows the "Choose PDF" primary button.
+- No other screen affected (they use the old `actionLabel`/`onAction` API which still works).
