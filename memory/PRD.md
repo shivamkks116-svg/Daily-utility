@@ -453,3 +453,38 @@ Complete rewrite of `src/subscription/RevenueCat.tsx` to match user's exact Play
 - No editable existing form values (fields load with their default, user can override).
 - No PDF form CREATION (only detection and filling of existing AcroForm PDFs).
 
+
+## v7.5 — PDF Picker hardening (Jun 2026)
+
+### Problem
+On some Android devices (mostly Files-by-Google / OEM DocumentsUI), tapping any PDF tool that calls `pickPdfs()` opened a picker that immediately showed an "unsupported / no app found" screen instead of the SAF file browser.
+
+### Root cause
+1. Picker MIME was `["application/pdf", "application/octet-stream", "*/*"]`. The `*/*` fallback + array combo confuses several OEM SAF wrappers (they misinterpret `EXTRA_MIME_TYPES`).
+2. `app.json` VIEW intent filter registered DailyHub AI as a PDF handler with `http`/`https` schemes and no `scheme` at all, causing the system chooser to inject itself into internal picker flows.
+3. `copyAsync` from read-only `content://` URIs failed silently on some providers, leaving the user with a broken selection.
+
+### Fix (single source of truth)
+- **`/app/frontend/src/utils/pdf/helpers.ts`** rewritten:
+  - Uses pure `application/pdf` MIME (SAF-native ACTION_OPEN_DOCUMENT). `*/*` used only as a second-attempt fallback if the first `getDocumentAsync` throws.
+  - Two-stage copy fallback: `copyAsync` → base64 read+write → original URI (never dead-ends).
+  - PDF header validation (`%PDF-` magic) after copy — catches renamed/corrupt files.
+  - Size guards: `LARGE_PDF_BYTES` (50 MB warning) and `MAX_PDF_BYTES` (200 MB hard block).
+  - `silentOnCancel` option; friendly messages for cancel / non-PDF / provider errors.
+- **`/app/frontend/app.json`** intent filters trimmed to only `content:` and `file:` schemes with `DEFAULT` category (removed `BROWSABLE`, `http`, `https`, standalone mime entries). This stops the "Open with" chooser from interfering with internal picker flows.
+- No new screens or duplicate picker logic — all 15+ PDF Toolkit screens automatically inherit the fix via `pickPdfs()`.
+
+### Not changed
+- No new permissions.
+- No `MANAGE_EXTERNAL_STORAGE`.
+- No changes to backend PDF endpoints (`/api/pdf/*`).
+- No changes to individual toolkit screens.
+
+### Manual verification (real Android device)
+1. Install fresh APK.
+2. Open **Merge PDF** → tap "Add PDFs" → SAF picker opens directly to Recent/Downloads (no chooser screen).
+3. Pick 2 PDFs from Downloads → both appear with name + size.
+4. Cancel picker → no error, just returns.
+5. Try picking a non-PDF (e.g. `.txt`) via long-press "Show all" → app shows "Not a PDF" alert.
+6. Try a PDF from Google Drive → succeeds after Drive downloads it.
+7. **Compress / Split / To Images** with a Downloads PDF → completes normally.

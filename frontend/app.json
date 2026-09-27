@@ -31,14 +31,10 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
+          "category": ["DEFAULT"],
           "data": [
-            { "mimeType": "application/pdf" },
-            { "mimeType": "application/x-pdf" },
             { "scheme": "content", "mimeType": "application/pdf" },
-            { "scheme": "file", "mimeType": "application/pdf" },
-            { "scheme": "http", "mimeType": "application/pdf" },
-            { "scheme": "https", "mimeType": "application/pdf" }
+            { "scheme": "file", "mimeType": "application/pdf" }
           ]
         },
         {
