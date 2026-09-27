@@ -12,6 +12,7 @@ import { AppLockGate } from "@/src/components/AppLockGate";
 import { colors } from "@/src/theme";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/subscription/RevenueCat";
 import { AdStartup } from "@/src/ads/native";
+import { useSharedIntentHandler } from "@/src/utils/pdf/sharedIntent";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -21,6 +22,7 @@ try { initializeRevenueCat(); } catch (e) { console.warn("[RC] init failed:", e)
 
 function InnerLayout() {
   const { user } = useAuth();
+  useSharedIntentHandler();
   return (
     <SubscriptionProvider userId={user?.user_id}>
       <View style={{ flex: 1, backgroundColor: colors.surface }}>

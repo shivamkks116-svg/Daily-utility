@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Image, ActivityIndicator, Pressable, Alert, Dimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState, ProgressBanner } from "@/src/components/toolkit/Primitives";
 import { pickPdfs, sharePdf, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
@@ -11,15 +11,32 @@ import { pdfToImages } from "@/src/utils/pdf";
 /**
  * PDF Reader / Viewer — renders every page as an image server-side and
  * displays them in a scrollable list. Doubles as a shareable preview.
+ *
+ * Accepts route params `sharedUri` / `sharedName` / `sharedSize` when
+ * launched from a system VIEW/SEND intent (see `src/utils/pdf/sharedIntent`).
  */
 export default function PdfReaderScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string }>();
   const [file, setFile] = useState<PickedPdf | null>(null);
   const [pages, setPages] = useState<{ page: number; uri: string; width: number; height: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const screenWidth = Dimensions.get("window").width - spacing.lg * 2;
+
+  // Pick up a PDF that was passed in via a shared intent.
+  useEffect(() => {
+    if (params.sharedUri && !file) {
+      setFile({
+        uri: String(params.sharedUri),
+        name: String(params.sharedName || "Shared.pdf"),
+        size: Number(params.sharedSize || 0),
+      });
+      setPages([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.sharedUri]);
 
   const pick = async () => {
     try {

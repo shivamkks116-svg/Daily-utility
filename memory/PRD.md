@@ -488,3 +488,32 @@ On some Android devices (mostly Files-by-Google / OEM DocumentsUI), tapping any 
 5. Try picking a non-PDF (e.g. `.txt`) via long-press "Show all" → app shows "Not a PDF" alert.
 6. Try a PDF from Google Drive → succeeds after Drive downloads it.
 7. **Compress / Split / To Images** with a Downloads PDF → completes normally.
+
+## v7.6 — Shared-intent handler (Jun 2026)
+
+### Problem
+When users tapped **Open with → DailyHub AI** from WhatsApp / Files / Chrome / Drive, Android delivered the intent's `content://<authority>/<path>` URI. Expo Router rewrote this into `dailyhubai://<authority>/<path>` (there's no matching file-based route) and displayed the built-in **"Unmatched Route"** error screen.
+
+Example URL from user report:
+`dailyhubai://com.whatsapp.provider.media/item/0cc4859f-dbec-4dd5-9438-2426c21ae576`
+
+### Fix
+- **`/app/frontend/src/utils/pdf/sharedIntent.ts`** (new) — installs a Linking listener at app root that catches both cold-start (`getInitialURL`) and warm-start (`url` event) intents. If the URL looks like a stripped `content://` provider path (matches `com.` / `org.` / `media/` / SAF roots), it reconstructs the real URI, calls `importPdfFromUri()` (which validates the `%PDF-` header), and `router.replace()`s into `/pdf-toolkit/reader` with the file pre-loaded.
+- **`/app/frontend/app/_layout.tsx`** — mounts the shared-intent hook inside `InnerLayout`.
+- **`/app/frontend/app/pdf-toolkit/reader.tsx`** — accepts `sharedUri` / `sharedName` / `sharedSize` route params and auto-renders on mount.
+- **`/app/frontend/app/+not-found.tsx`** (new) — catch-all fallback. Any residual unmatched route now shows a subtle loader for 400 ms (long enough for the intent handler to finish) and bounces to `/(main)/home`, replacing the built-in error screen.
+
+### Not changed
+- No new native packages.
+- No new permissions.
+- No changes to the picker MIME logic from v7.5.
+- Intent filters unchanged.
+
+### Verify (real APK)
+1. Send a PDF to yourself on WhatsApp → tap it → tap ⋮ → "Open in another app" → pick DailyHub AI → **PDF Reader opens with the file already loaded** (no Unmatched Route).
+2. Same via Google Drive share → PDF Reader.
+3. Same via Gmail attachment tap → PDF Reader.
+4. Send a non-PDF (image) → app opens on home (not error page).
+
+### RevenueCat products error (unrelated)
+The `Could not find ProductDetails for pro.monthly, pro.annual` log is a **Play Console configuration** issue, not a code bug. The products must be created in Play Console → Monetization → Subscriptions with those exact IDs, and the app must be published to at least the Internal Testing track. See https://rev.cat/why-are-offerings-empty.
