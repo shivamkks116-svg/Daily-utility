@@ -1,0 +1,33 @@
+{
+  "summary": "Tested updated POST /api/pdf/to-images endpoint across all 3 modes (page_count_only, specific pages, legacy full render) plus input validation and auth guard. 7/7 pytest tests pass. All three modes behave exactly as specified; no regressions in the legacy full-render path.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pdf_to_images_modes.py",
+    "/app/test_reports/pytest/pdf_to_images_modes.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:1373 correctly clamps pages to doc range using `1 <= p <= total_doc_pages` and dedupes+sorts — safe against duplicates and out-of-range values.",
+    "server.py:1375 caps rendered pages at max_pages to prevent abuse (good).",
+    "page_count_only path (server.py:1367-1369) closes doc before returning — no leak.",
+    "server.py is 1823 lines — exceeds the 700-line guideline; consider modularizing PDF/image endpoints into a router module (pre-existing, not introduced by this change)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pdf_to_images_modes.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (out of scope)"},
+  "seed_data_creation": "Ephemeral: guest user via /api/auth/guest and a locally generated 3-page PyMuPDF PDF (in-memory, not persisted).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable pytest suite at /app/backend/tests/test_pdf_to_images_modes.py covers all three modes of /api/pdf/to-images plus validation and auth. Uses PyMuPDF (fitz) to generate a 3-page PDF fixture in-session.",
+  "rca_of_issue": "N/A — no bugs found. Mode-1 asserts total_pages==3 & pages==[]; Mode-2 asserts exactly [1,3] rendered with non-empty data at requested dpi/format; Mode-3 asserts all 3 pages returned sequentially. Invalid base64 → 400, missing field → 422, no auth → 401. Extra edge test: out-of-range page number in `pages` is silently filtered (verified expected behavior)."
+}

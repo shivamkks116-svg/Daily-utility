@@ -24,7 +24,7 @@ import {
   ProgressBanner,
 } from "@/src/components/toolkit/Primitives";
 import { pickPdfs, sharePdf, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
-import { pdfToImages } from "@/src/utils/pdf";
+import { getPdfPageCount, pdfRenderPages } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
 /**
@@ -40,9 +40,12 @@ import { addRecent } from "@/src/utils/toolkit/recents";
  */
 
 type Fit = "width" | "page";
-type PageImg = { page: number; uri: string; width: number; height: number };
+type PageImg = { page: number; uri: string; width: number; height: number; loaded: boolean };
 
 const ZOOM_LEVELS = [1, 1.5, 2] as const;
+const FIRST_BATCH = 2;   // pages fetched before showing anything
+const CHUNK_SIZE = 4;    // pages fetched per background batch
+const DEFAULT_ASPECT = 1 / 1.414; // A4 portrait fallback while a page is still loading
 
 export default function PdfReaderScreen() {
   const router = useRouter();
@@ -81,10 +84,13 @@ export default function PdfReaderScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.sharedUri]);
 
+  const cancelRenderRef = useRef(false);
+
   const pick = async () => {
     try {
       const [picked] = await pickPdfs({ multiple: false });
       if (!picked) return;
+      cancelRenderRef.current = true; // stop any in-flight background render
       setFile(picked);
       setPages([]);
       setCurrentPage(1);
@@ -94,26 +100,97 @@ export default function PdfReaderScreen() {
     }
   };
 
+  /**
+   * Progressive render:
+   *   1. Ask the server for JUST the total page count → instantly know the
+   *      shape of the document.
+   *   2. Fetch the first `FIRST_BATCH` pages at 130 DPI JPEG → show them.
+   *   3. In the background, walk through the rest in `CHUNK_SIZE` batches
+   *      and stitch them in as they arrive.
+   * The user sees page 1 in ~1-2 seconds instead of waiting for the whole
+   * document to render.
+   */
   const render = async () => {
     if (!file) return;
+    cancelRenderRef.current = false;
     setBusy(true);
-    setStatus("Rendering pages…");
+    setStatus("Opening PDF…");
     try {
-      const imgs = await pdfToImages(file.uri, { dpi: 150, format: "png" });
-      setPages(imgs);
-      setStatus(`${imgs.length} pages loaded`);
-      // Track that we opened this PDF so it shows on Home > Recent PDFs.
-      try {
-        await addRecent({
-          kind: "pdf",
-          uri: file.uri,
-          name: file.name,
-          size: file.size,
-          tool: "Reader",
-        });
-      } catch {}
+      const total = await getPdfPageCount(file.uri);
+      if (total <= 0) {
+        Alert.alert("Empty PDF", "This document has no pages.");
+        setStatus("");
+        return;
+      }
+      // Seed the page list with placeholders so the UI can already render
+      // page numbers, badges and scroll offsets.
+      const placeholders: PageImg[] = Array.from({ length: total }, (_, i) => ({
+        page: i + 1,
+        uri: "",
+        width: 1000,
+        height: Math.round(1000 / DEFAULT_ASPECT),
+        loaded: false,
+      }));
+      setPages(placeholders);
+
+      const firstPages = Array.from(
+        { length: Math.min(FIRST_BATCH, total) },
+        (_, i) => i + 1,
+      );
+      setStatus(`Loading page 1 of ${total}…`);
+      const firstImgs = await pdfRenderPages(file.uri, firstPages, {
+        dpi: 130,
+        format: "jpeg",
+      });
+      if (cancelRenderRef.current) return;
+      setPages((prev) => {
+        const next = prev.slice();
+        for (const img of firstImgs) {
+          next[img.page - 1] = { ...img, loaded: true };
+        }
+        return next;
+      });
+      setStatus(total > FIRST_BATCH ? `Loading page ${FIRST_BATCH + 1} of ${total}…` : "");
+      setBusy(false); // Let the user start reading immediately.
+
+      // Track opened doc.
+      addRecent({
+        kind: "pdf",
+        uri: file.uri,
+        name: file.name,
+        size: file.size,
+        tool: "Reader",
+      }).catch(() => {});
+
+      // Background: fetch the remaining pages in chunks.
+      for (let start = FIRST_BATCH + 1; start <= total; start += CHUNK_SIZE) {
+        if (cancelRenderRef.current) return;
+        const end = Math.min(start + CHUNK_SIZE - 1, total);
+        const chunk = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+        setStatus(`Loading page ${start} of ${total}…`);
+        try {
+          const imgs = await pdfRenderPages(file.uri, chunk, {
+            dpi: 130,
+            format: "jpeg",
+          });
+          if (cancelRenderRef.current) return;
+          setPages((prev) => {
+            const next = prev.slice();
+            for (const img of imgs) {
+              next[img.page - 1] = { ...img, loaded: true };
+            }
+            return next;
+          });
+        } catch (e) {
+          console.warn("[reader] chunk failed:", e);
+          // Keep going — a single failed chunk shouldn't kill the whole load.
+        }
+      }
+      if (!cancelRenderRef.current) {
+        setStatus(`${total} pages loaded`);
+      }
     } catch (e: unknown) {
-      Alert.alert("Render failed", (e as Error)?.message || String(e));
+      Alert.alert("Open failed", (e as Error)?.message || String(e));
       setStatus("");
     } finally {
       setBusy(false);
@@ -190,7 +267,7 @@ export default function PdfReaderScreen() {
         onBack={() => router.back()}
       />
 
-      {file && pages.length > 0 ? (
+      {file && pages.some((p) => p.loaded) ? (
         <View style={styles.toolbar}>
           <Pressable
             onPress={() => setFit((f) => (f === "width" ? "page" : "width"))}
@@ -272,7 +349,9 @@ export default function PdfReaderScreen() {
               </Pressable>
             </View>
 
-            {busy ? <ProgressBanner label={status} /> : null}
+            {busy || (status && pages.some(p => !p.loaded)) ? (
+              <ProgressBanner label={status} />
+            ) : null}
 
             {pages.map((p, i) => {
               const box = pageBox(p);
@@ -284,11 +363,18 @@ export default function PdfReaderScreen() {
                     { width: box.w, height: box.h },
                   ]}
                 >
-                  <Image
-                    source={{ uri: p.uri }}
-                    style={{ width: box.w, height: box.h }}
-                    resizeMode="contain"
-                  />
+                  {p.loaded && p.uri ? (
+                    <Image
+                      source={{ uri: p.uri }}
+                      style={{ width: box.w, height: box.h }}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={styles.pagePlaceholder}>
+                      <ActivityIndicator size="small" color={colors.brandPrimary} />
+                      <Text style={styles.pagePlaceholderText}>Rendering page {p.page}…</Text>
+                    </View>
+                  )}
                   <View style={styles.pageBadge}>
                     <Text style={styles.pageBadgeText}>Page {p.page}</Text>
                   </View>
@@ -320,7 +406,7 @@ export default function PdfReaderScreen() {
               );
             })}
 
-            {pages.length > 0 ? (
+            {pages.some((p) => p.loaded) ? (
               <View style={{ marginTop: spacing.lg }}>
                 <SecondaryButton
                   icon="share-outline"
@@ -427,6 +513,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   pageBadgeText: { color: "#fff", fontSize: 11, fontWeight: fontWeight.bold },
+  pagePlaceholder: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  pagePlaceholderText: {
+    color: colors.onSurfaceTertiary,
+    fontSize: fontSize.xs,
+  },
   overlay: {
     position: "absolute",
     inset: 0,

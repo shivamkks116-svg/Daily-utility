@@ -287,6 +287,38 @@ export async function pdfToImages(
   return out;
 }
 
+/** Return just the total page count of a PDF (server round-trip, no rendering). */
+export async function getPdfPageCount(uri: string): Promise<number> {
+  const res = await callPdfApi<
+    { page_count_only: boolean },
+    { total_pages: number }
+  >("/pdf/to-images", uri, { page_count_only: true });
+  return res.total_pages;
+}
+
+/** Render a specific slice of pages. Fast path for progressive loading. */
+export async function pdfRenderPages(
+  uri: string,
+  pages: number[],
+  opts: { dpi?: number; format?: "png" | "jpeg" } = {},
+): Promise<{ page: number; uri: string; width: number; height: number }[]> {
+  const res = await callPdfApi<
+    { dpi?: number; format?: string; pages: number[] },
+    { pages: { page: number; data: string; width: number; height: number; mime: string }[] }
+  >("/pdf/to-images", uri, {
+    dpi: opts.dpi ?? 130,
+    format: opts.format ?? "jpeg",
+    pages,
+  });
+  const out: { page: number; uri: string; width: number; height: number }[] = [];
+  for (const p of res.pages) {
+    const ext = p.mime === "image/jpeg" ? "jpg" : "png";
+    const dest = await writeBase64(uniqueName(`page-${p.page}`, ext), p.data);
+    out.push({ page: p.page, uri: dest, width: p.width, height: p.height });
+  }
+  return out;
+}
+
 /** Compress a PDF. Returns file:// URI + size stats. */
 export async function compressPdf(uri: string): Promise<{
   uri: string;

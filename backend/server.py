@@ -1335,11 +1335,19 @@ class PDFToImagesIn(PDFFileIn):
     dpi: Optional[int] = 150       # 72..300
     format: Optional[str] = "png"  # png | jpeg
     max_pages: Optional[int] = 100
+    pages: Optional[List[int]] = None  # 1-indexed page numbers; if provided, render ONLY these
+    page_count_only: Optional[bool] = False
 
 
 @api_router.post("/pdf/to-images")
 async def pdf_to_images(payload: PDFToImagesIn, authorization: Optional[str] = Header(default=None)):
-    """Render every page of a PDF to base64 PNG/JPEG for in-app viewing / export."""
+    """Render pages of a PDF to base64 PNG/JPEG for in-app viewing / export.
+
+    Supports three modes:
+      • `page_count_only=True` → returns just `{total_pages}` (instant, no rendering).
+      • `pages=[1,2,...]`      → renders only the requested page numbers.
+      • default                → renders every page up to `max_pages`.
+    """
     await require_user(authorization)
     if fitz is None:
         raise HTTPException(500, "PDF service unavailable")
@@ -1353,12 +1361,27 @@ async def pdf_to_images(payload: PDFToImagesIn, authorization: Optional[str] = H
         doc = fitz.open(stream=data, filetype="pdf")
     except Exception as e:
         raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    total_doc_pages = len(doc)
+
+    # Fast path: caller only wants the page count.
+    if payload.page_count_only:
+        doc.close()
+        return {"pages": [], "total_pages": total_doc_pages, "dpi": dpi, "format": fmt}
+
+    # Determine which pages to render.
+    if payload.pages:
+        wanted = sorted({p for p in payload.pages if 1 <= int(p) <= total_doc_pages})
+        # Clamp to max_pages worth of items to avoid abuse.
+        wanted = wanted[:max_pages]
+        page_indices = [p - 1 for p in wanted]
+    else:
+        page_indices = list(range(min(total_doc_pages, max_pages)))
+
     images: List[Dict[str, Any]] = []
-    total = min(len(doc), max_pages)
     try:
         zoom = dpi / 72.0
         matrix = fitz.Matrix(zoom, zoom)
-        for i in range(total):
+        for i in page_indices:
             page = doc[i]
             pix = page.get_pixmap(matrix=matrix, alpha=False)
             if fmt in ("jpeg", "jpg"):
@@ -1376,7 +1399,7 @@ async def pdf_to_images(payload: PDFToImagesIn, authorization: Optional[str] = H
             })
     finally:
         doc.close()
-    return {"pages": images, "total_pages": total, "dpi": dpi, "format": fmt}
+    return {"pages": images, "total_pages": total_doc_pages, "dpi": dpi, "format": fmt}
 
 
 @api_router.post("/pdf/compress")
