@@ -31,26 +31,46 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["DEFAULT"],
+          "category": [
+            "DEFAULT"
+          ],
           "data": [
-            { "scheme": "content", "mimeType": "application/pdf" },
-            { "scheme": "file", "mimeType": "application/pdf" }
+            {
+              "scheme": "content",
+              "mimeType": "application/pdf"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/pdf"
+            }
           ]
         },
         {
           "action": "SEND",
-          "category": ["DEFAULT"],
+          "category": [
+            "DEFAULT"
+          ],
           "data": [
-            { "mimeType": "application/pdf" },
-            { "mimeType": "image/*" }
+            {
+              "mimeType": "application/pdf"
+            },
+            {
+              "mimeType": "image/*"
+            }
           ]
         },
         {
           "action": "SEND_MULTIPLE",
-          "category": ["DEFAULT"],
+          "category": [
+            "DEFAULT"
+          ],
           "data": [
-            { "mimeType": "application/pdf" },
-            { "mimeType": "image/*" }
+            {
+              "mimeType": "application/pdf"
+            },
+            {
+              "mimeType": "image/*"
+            }
           ]
         }
       ],
@@ -132,7 +152,8 @@
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
-      "./plugins/withCodegenCMakeFix.js"
+      "./plugins/withCodegenCMakeFix.js",
+      "react-native-blob-util"
     ],
     "experiments": {
       "typedRoutes": true
