@@ -1,0 +1,47 @@
+{
+  "summary": "Backend testing of POST /api/docx/to-pdf. Found and fixed a font-name bug (`helv-b` is not a valid pymupdf font, causing 500 whenever a DOCX contained a heading). Replaced with `hebo` (Helvetica-Bold). After the fix, all 6 test cases pass: happy path (heading + paragraphs → valid PDF starting with %PDF-, size>500, pages>=1) plus all 5 error paths (no auth → 401, invalid token → 401, missing file_base64 → 422, invalid base64 → 400, non-DOCX bytes → 400 with 'Could not open DOCX' message).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/docx/to-pdf",
+        "issue": "Font name `helv-b` is not supported by pymupdf.get_text_length/insert_text. Any DOCX containing a heading (which sets `bold=True`) crashed the endpoint with a 500 (ValueError: Font 'helv-b' is unsupported). Fixed by changing to `hebo` at /app/backend/server.py:1853. Verified with pymupdf: `hebo` is the correct Helvetica-Bold Base14 name.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/docx/to-pdf",
+        "issue": "`pages` field is computed as `len(paragraphs) and 1`, which always returns 1 when at least one paragraph exists. It does not reflect the true multi-page count from the generated PDF. Consider using `out_doc.page_count` before closing the document."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_docx_to_pdf.py",
+    "/app/test_reports/pytest/docx_to_pdf.xml"
+  ],
+  "action_items": [
+    "Review the font-name fix at /app/backend/server.py:1853 (`helv-b` → `hebo`).",
+    "Optional: compute `pages` from `out_doc.page_count` (captured before `out_doc.close()`) rather than `len(paragraphs) and 1`."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1929 lines — well over the 700-line guideline. Consider splitting toolkit endpoints (PDF/DOCX/QR/etc.) into feature routers.",
+    "Font constants are hard-coded in multiple places; consider a small `PDF_FONTS = {'regular': 'helv', 'bold': 'hebo'}` map to prevent similar typos.",
+    "`pages` computation uses a truthy-boolean idiom (`len(paragraphs) and 1`) which is not semantically a page count — misleading contract."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (line 1853: font name fix)",
+    "/app/backend/tests/test_docx_to_pdf.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "None — tests build DOCX in-memory with python-docx and guest tokens via /api/auth/guest.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Endpoint /api/docx/to-pdf now works for DOCX with headings and plain paragraphs. Base URL: EXPO_PUBLIC_BACKEND_URL. Auth: POST /api/auth/guest with JSON body `{\"name\":\"...\"}` returns `session_token` (use as Bearer). `_decode_b64_bytes` uses lenient b64 decode, so 'invalid base64' cases still reach DOCX open and surface as 400 'Could not open DOCX' — behavior matches spec.",
+  "rca_of_issue": "Root cause: pymupdf's Base14 font naming convention was misused. Helvetica-Bold is `hebo` (not `helv-b`). The bug was latent because it only triggered when a paragraph's style name began with 'Heading', flipping the `bold` flag on. Reproduction: POST /api/docx/to-pdf with a base64 DOCX that contains `doc.add_heading(...)` → 500 Internal Server Error, backend log shows `ValueError: Font 'helv-b' is unsupported`. Mitigation: use pymupdf's Base14 names (`helv`, `hebo`, `heit`, `hebi`)."
+}

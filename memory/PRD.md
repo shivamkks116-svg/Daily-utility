@@ -662,3 +662,34 @@ Pages appear in **~200 ms** regardless of document size, with built-in pinch-zoo
 4. Pinch-zoom, double-tap, horizontal / vertical scroll — all native.
 5. Try a password-protected PDF → prompt appears; type password → renders.
 6. Recent PDFs on Home populates on second launch.
+
+## v8.1 — Word document support (Jun 2026)
+
+### User request
+Two things:
+1. Open a `.docx` from WhatsApp / Files / Drive → "Open with" should list DailyHub AI.
+2. Add an in-app "Word → PDF" tool so users can convert `.docx` to a PDF and read it in the native Reader.
+
+### Backend
+- **`/api/docx/to-pdf`** (new) — takes `file_base64` (DOCX bytes), uses **python-docx** to extract paragraphs / headings (bold + font size preserved), then renders into an A4 PDF via **pymupdf** with word wrapping + heading typography. Returns `{ file_base64, size, pages }`. Uses PyMuPDF's Base14 font names (`helv` / `hebo`).
+- Bug caught during test: initial `helv-b` font name isn't valid in pymupdf → fixed to `hebo` (Helvetica-Bold).
+- `pages` field now reflects true PDF page count (`out_doc.page_count`).
+
+### Frontend
+- **`src/utils/docx/helpers.ts`** (new) — `pickDocx()`, `importDocxFromUri()` (validates DOCX magic bytes `UEs`/OLE `0M8R`), `docxToPdf()` (hits the backend and writes the resulting PDF to cache).
+- **`app/pdf-toolkit/word-to-pdf.tsx`** (new) — picker + "Convert to PDF" button + progress banner. On success routes into `/pdf-toolkit/reader` so the converted doc opens instantly in the native viewer.
+- **`app/pdf-toolkit/index.tsx`** — new "Word → PDF" tool card in the catalog.
+- **`src/utils/pdf/sharedIntent.ts`** — after PDF & image detection, also tries DOCX. Shared Word files route to `/pdf-toolkit/word-to-pdf?sharedUri=…` so the convert screen appears prefilled.
+
+### Intent filters (`app.json`)
+- VIEW filter category expanded to include `BROWSABLE`.
+- MIME types added: `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/msword`.
+- Extra filter using `pathPattern` on `.pdf` / `.docx` / `.doc` extensions so DailyHub AI appears in "Open with" for content providers that don't set the MIME type.
+
+### Verification
+- Backend: 6/6 pytest cases pass — happy path, PDF magic bytes, auth 401, missing field 422, invalid base64 400, non-DOCX 400. Report in `test_reports/iteration_23.json`.
+- Web preview bundle clean.
+- Native side must be tested on APK (SAF picker + share intent).
+
+### Note on Android "Always" default
+Setting an app as default handler for a file type is entirely an OS/user decision — no code path exists that forces "Always". User must tap **Always** in the "Open with" chooser. Expanded intent filters ensure DailyHub AI appears reliably in that list.

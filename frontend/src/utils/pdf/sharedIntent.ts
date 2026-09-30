@@ -23,6 +23,7 @@ import { router } from "expo-router";
 
 import { importPdfFromUri } from "@/src/utils/pdf/helpers";
 import { importImageFromUri } from "@/src/utils/image/import";
+import { importDocxFromUri } from "@/src/utils/docx/helpers";
 
 const SCHEME = "dailyhubai://";
 
@@ -75,6 +76,20 @@ async function processSharedUrl(rawUrl: string | null) {
           sharedUri: img.uri,
           sharedName: img.name,
           sharedSize: String(img.size),
+        },
+      });
+      return;
+    }
+
+    // Not an image either? Try Word document (checks DOCX / DOC magic bytes).
+    const docx = await importDocxFromUri(uri);
+    if (docx) {
+      router.replace({
+        pathname: "/pdf-toolkit/word-to-pdf",
+        params: {
+          sharedUri: docx.uri,
+          sharedName: docx.name,
+          sharedSize: String(docx.size),
         },
       });
       return;

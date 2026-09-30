@@ -1781,6 +1781,113 @@ async def image_describe(payload: ImageFileIn, authorization: Optional[str] = He
     return {"description": result}
 
 
+# ---------------- Word (DOCX / DOC) → PDF ----------------
+try:
+    import docx as _docx  # type: ignore
+except ImportError:
+    _docx = None  # type: ignore
+
+
+class DocxToPDFIn(BaseModel):
+    file_base64: str = Field(..., description="DOCX file bytes as base64")
+    title: Optional[str] = None
+
+
+@api_router.post("/docx/to-pdf")
+async def docx_to_pdf(payload: DocxToPDFIn, authorization: Optional[str] = Header(default=None)):
+    """Convert a .docx document to a text-only PDF using python-docx + pymupdf.
+
+    Preserves paragraph flow, bold / italic runs, and heading sizes. Complex
+    layouts (tables, images, columns) are rendered as best-effort plain text.
+    """
+    await require_user(authorization)
+    if _docx is None:
+        raise HTTPException(500, "DOCX service unavailable (python-docx missing)")
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        from io import BytesIO
+        buf = BytesIO(data)
+        doc = _docx.Document(buf)
+    except Exception as e:
+        raise HTTPException(400, f"Could not open DOCX: {str(e)[:120]}")
+
+    # Extract structured paragraphs. Each entry: (text, is_bold, is_italic, font_size).
+    paragraphs: List[Dict[str, Any]] = []
+    for p in doc.paragraphs:
+        text = (p.text or "").strip()
+        style_name = (p.style.name if p.style else "") or ""
+        is_heading = style_name.startswith("Heading")
+        size = 18 if is_heading else 11
+        if is_heading and style_name.endswith(("2", "3", "4", "5", "6")):
+            size = 14  # Sub-headings shrink to 14 pt.
+        paragraphs.append({
+            "text": text,
+            "size": size,
+            "bold": is_heading,
+        })
+
+    # Fall back if the document is empty.
+    if not any(p["text"] for p in paragraphs):
+        paragraphs.append({"text": "(empty document)", "size": 11, "bold": False})
+
+    # Render into an A4 PDF using pymupdf's simple text layout.
+    out_doc = fitz.open()
+    page_w, page_h = 595, 842                # A4 in pts
+    margin_x, margin_y = 56, 64              # 20 / 22 mm
+    max_width = page_w - 2 * margin_x
+    line_gap = 4
+    page = out_doc.new_page(width=page_w, height=page_h)
+    cursor_y = margin_y
+
+    def new_page():
+        nonlocal page, cursor_y
+        page = out_doc.new_page(width=page_w, height=page_h)
+        cursor_y = margin_y
+
+    for para in paragraphs:
+        text = para["text"]
+        size = int(para["size"])
+        bold = bool(para["bold"])
+        font_name = "hebo" if bold else "helv"
+        if not text:
+            cursor_y += size + line_gap
+            if cursor_y > page_h - margin_y:
+                new_page()
+            continue
+        # Manual word wrap into `max_width` using pymupdf's text-length helper.
+        words = text.split(" ")
+        line = ""
+        for w in words:
+            probe = f"{line} {w}".strip()
+            if fitz.get_text_length(probe, fontname=font_name, fontsize=size) <= max_width:
+                line = probe
+                continue
+            # Flush current line, start new.
+            if cursor_y + size > page_h - margin_y:
+                new_page()
+            page.insert_text((margin_x, cursor_y + size), line, fontname=font_name, fontsize=size)
+            cursor_y += size + line_gap
+            line = w
+        if line:
+            if cursor_y + size > page_h - margin_y:
+                new_page()
+            page.insert_text((margin_x, cursor_y + size), line, fontname=font_name, fontsize=size)
+            cursor_y += size + line_gap
+        # Extra space between paragraphs / headings.
+        cursor_y += 4 if not bold else 8
+
+    pdf_bytes = out_doc.tobytes()
+    page_count = out_doc.page_count
+    out_doc.close()
+    return {
+        "file_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
+        "size": len(pdf_bytes),
+        "pages": page_count,
+    }
+
+
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 

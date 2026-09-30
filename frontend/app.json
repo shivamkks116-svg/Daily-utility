@@ -32,7 +32,8 @@
         {
           "action": "VIEW",
           "category": [
-            "DEFAULT"
+            "DEFAULT",
+            "BROWSABLE"
           ],
           "data": [
             {
@@ -42,7 +43,38 @@
             {
               "scheme": "file",
               "mimeType": "application/pdf"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/msword"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/msword"
             }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
+          "data": [
+            { "scheme": "content", "host": "*", "pathPattern": ".*\\.pdf" },
+            { "scheme": "content", "host": "*", "pathPattern": ".*\\.docx" },
+            { "scheme": "content", "host": "*", "pathPattern": ".*\\.doc" },
+            { "scheme": "file", "host": "*", "pathPattern": ".*\\.pdf" },
+            { "scheme": "file", "host": "*", "pathPattern": ".*\\.docx" },
+            { "scheme": "file", "host": "*", "pathPattern": ".*\\.doc" }
           ]
         },
         {
@@ -51,12 +83,10 @@
             "DEFAULT"
           ],
           "data": [
-            {
-              "mimeType": "application/pdf"
-            },
-            {
-              "mimeType": "image/*"
-            }
+            { "mimeType": "application/pdf" },
+            { "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+            { "mimeType": "application/msword" },
+            { "mimeType": "image/*" }
           ]
         },
         {
@@ -65,12 +95,10 @@
             "DEFAULT"
           ],
           "data": [
-            {
-              "mimeType": "application/pdf"
-            },
-            {
-              "mimeType": "image/*"
-            }
+            { "mimeType": "application/pdf" },
+            { "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+            { "mimeType": "application/msword" },
+            { "mimeType": "image/*" }
           ]
         }
       ],
