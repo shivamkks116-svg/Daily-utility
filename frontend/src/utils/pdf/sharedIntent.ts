@@ -85,7 +85,7 @@ async function processSharedUrl(rawUrl: string | null) {
     const docx = await importDocxFromUri(uri);
     if (docx) {
       router.replace({
-        pathname: "/pdf-toolkit/word-to-pdf",
+        pathname: "/pdf-toolkit/word-reader",
         params: {
           sharedUri: docx.uri,
           sharedName: docx.name,

@@ -37,6 +37,7 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
       { key: "reader", label: "PDF Reader", desc: "View any PDF page-by-page", icon: "eye", route: "/pdf-toolkit/reader" },
       { key: "to-images", label: "PDF → Images", desc: "Export each page as PNG or JPEG", icon: "image", route: "/pdf-toolkit/to-images" },
       { key: "to-docx", label: "PDF → Word", desc: "Extract text to a .docx file", icon: "document", route: "/pdf-toolkit/to-docx" },
+      { key: "word-reader", label: "Word Reader", desc: "Open .docx / .doc for reading", icon: "document-text", route: "/pdf-toolkit/word-reader" },
       { key: "word-to-pdf", label: "Word → PDF", desc: "Convert .docx / .doc into a PDF", icon: "document-text", route: "/pdf-toolkit/word-to-pdf" },
     ],
   },

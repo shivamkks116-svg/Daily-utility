@@ -1793,6 +1793,55 @@ class DocxToPDFIn(BaseModel):
     title: Optional[str] = None
 
 
+class DocxReadIn(BaseModel):
+    file_base64: str = Field(..., description="DOCX file bytes as base64")
+
+
+@api_router.post("/docx/read")
+async def docx_read(payload: DocxReadIn, authorization: Optional[str] = Header(default=None)):
+    """Extract structured paragraphs from a Word document for in-app reading.
+
+    Returns a list of `{text, level, bold}` blocks. `level` is 0 for body
+    paragraphs and 1..6 for `Heading 1`..`Heading 6`. `bold` is `True` for
+    any heading. The frontend renders these as native selectable text
+    without going through the PDF pipeline.
+    """
+    await require_user(authorization)
+    if _docx is None:
+        raise HTTPException(500, "DOCX service unavailable (python-docx missing)")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        from io import BytesIO
+        buf = BytesIO(data)
+        doc = _docx.Document(buf)
+    except Exception as e:
+        raise HTTPException(400, f"Could not open DOCX: {str(e)[:120]}")
+
+    blocks: List[Dict[str, Any]] = []
+    total_chars = 0
+    for p in doc.paragraphs:
+        text = (p.text or "").rstrip()
+        style_name = (p.style.name if p.style else "") or ""
+        level = 0
+        if style_name.startswith("Heading"):
+            # "Heading 1" -> 1, "Heading 2" -> 2, ...
+            try:
+                level = int(style_name.replace("Heading", "").strip() or "1")
+            except ValueError:
+                level = 1
+        blocks.append({
+            "text": text,
+            "level": level,          # 0 = body, 1..6 = heading level
+            "bold": level > 0,
+        })
+        total_chars += len(text)
+    return {
+        "blocks": blocks,
+        "paragraph_count": len(blocks),
+        "char_count": total_chars,
+    }
+
+
 @api_router.post("/docx/to-pdf")
 async def docx_to_pdf(payload: DocxToPDFIn, authorization: Optional[str] = Header(default=None)):
     """Convert a .docx document to a text-only PDF using python-docx + pymupdf.

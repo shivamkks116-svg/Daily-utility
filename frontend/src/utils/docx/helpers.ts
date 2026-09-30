@@ -12,7 +12,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Alert, Platform } from "react-native";
-import Constants from "expo-constants";
+import { api } from "@/src/api/client";
 
 // -------- Public types --------
 
@@ -123,26 +123,23 @@ export async function importDocxFromUri(rawUri: string): Promise<PickedDocx | nu
 
 /**
  * Convert a DOCX to a PDF via the backend. Returns the local PDF file path.
+ * Uses the shared `api` client so auth headers, base URL and error handling
+ * stay consistent with every other backed-backed tool.
  */
-export async function docxToPdf(uri: string, name: string): Promise<{ uri: string; size: number; name: string }> {
+export async function docxToPdf(
+  uri: string,
+  name: string,
+): Promise<{ uri: string; size: number; name: string }> {
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  const token = await getAuthToken();
-  const backend = process.env.EXPO_PUBLIC_BACKEND_URL || Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || "";
-  const res = await fetch(`${backend}/api/docx/to-pdf`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  const body = await api<{ file_base64: string; size: number; pages: number }>(
+    "/docx/to-pdf",
+    {
+      method: "POST",
+      body: { file_base64: base64, title: name } as unknown as Record<string, unknown>,
     },
-    body: JSON.stringify({ file_base64: base64, title: name }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`Convert failed (${res.status}): ${txt.slice(0, 160)}`);
-  }
-  const body: { file_base64: string; size: number } = await res.json();
+  );
   const outName = name.replace(/\.docx?$/i, "") + ".pdf";
   const dest = `${FileSystem.cacheDirectory}${Date.now()}-${outName}`;
   await FileSystem.writeAsStringAsync(dest, body.file_base64, {
@@ -151,17 +148,36 @@ export async function docxToPdf(uri: string, name: string): Promise<{ uri: strin
   return { uri: dest, size: body.size, name: outName };
 }
 
-// -------- Auth helper --------
+// -------- Word reader --------
 
-async function getAuthToken(): Promise<string | null> {
-  try {
-    const mod = await import("@/src/utils/storage");
-    return (await mod.storage.getItem("auth_token")) || null;
-  } catch {
-    return null;
-  }
+export type DocxBlock = { text: string; level: number; bold: boolean };
+
+/**
+ * Ask the backend to extract structured blocks from a DOCX so we can render
+ * them as native, selectable text in the in-app Word Reader.
+ */
+export async function docxRead(uri: string): Promise<{
+  blocks: DocxBlock[];
+  paragraphCount: number;
+  charCount: number;
+}> {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const body = await api<{
+    blocks: DocxBlock[];
+    paragraph_count: number;
+    char_count: number;
+  }>("/docx/read", {
+    method: "POST",
+    body: { file_base64: base64 } as unknown as Record<string, unknown>,
+  });
+  return {
+    blocks: body.blocks,
+    paragraphCount: body.paragraph_count,
+    charCount: body.char_count,
+  };
 }
 
-// Keep Platform used to prevent lint warnings on unused import (we may need it
-// for platform-specific error handling in the future).
+// Keep Platform referenced to silence lint on unused import (used later).
 void Platform;

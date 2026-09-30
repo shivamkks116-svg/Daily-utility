@@ -693,3 +693,35 @@ Two things:
 
 ### Note on Android "Always" default
 Setting an app as default handler for a file type is entirely an OS/user decision — no code path exists that forces "Always". User must tap **Always** in the "Open with" chooser. Expanded intent filters ensure DailyHub AI appears reliably in that list.
+
+## v8.2 — Dedicated Word Reader + auth fix (Jun 2026)
+
+### User report
+1. "Word to PDF" tool crashed with `Convert failed (401): {"detail":"Not authenticated"}`.
+2. Wanted a dedicated in-app Word reader (view a `.docx` directly without converting first).
+
+### Root cause of the 401
+`docxToPdf()` in `src/utils/docx/helpers.ts` was using a hand-rolled `fetch()` that:
+- Looked up the wrong AsyncStorage key (`"auth_token"` instead of `"dailyhub_session_token"`).
+- Bypassed the shared `api` client (which handles base URL, auth headers, error parsing centrally).
+
+### Fix
+- `docxToPdf()` now routes through the shared `api` client — same headers, same base URL, same error handling as every other backend call. No more auth mismatch.
+- Removed the ad-hoc `getAuthToken()` helper and the unused `Constants` import.
+
+### New feature — dedicated Word Reader
+- Backend: **`/api/docx/read`** returns `{ blocks: [{text, level, bold}], paragraph_count, char_count }`. `level` = 0 body / 1..6 heading. Uses python-docx only (no PDF pipeline).
+- Frontend helper: `docxRead(uri)` in `src/utils/docx/helpers.ts`.
+- Screen: `/app/pdf-toolkit/word-reader.tsx` — auto-picks up `sharedUri` from Android VIEW/SEND intents, renders each block as native selectable text with heading typography (24 / 20 / 18 / 16 / 15 / 14 px), and offers an "Open as PDF" shortcut that converts + jumps to the native PDF Reader.
+- Registered in the PDF Toolkit catalog as a new "Word Reader" card. Word Toolkit landing is still "Word → PDF".
+- **Shared Word files now route to Word Reader first** (previous version dumped them straight into the convert screen).
+
+### Backend tests
+- `iteration_24.json` — 7/7 pytest cases pass:
+  - `/docx/read` happy path with 2 headings + 2 paragraphs → exact block order, correct levels/bold flags.
+  - Error cases: no auth 401, bad token 401, missing field 422, invalid base64 400, non-DOCX 400.
+  - `/docx/to-pdf` regression: still returns `%PDF-` bytes with accurate `pages`.
+
+### Verified
+- Web preview `/pdf-toolkit/word-reader` — empty state + "Choose Word file" button render correctly.
+- Bundle clean, lint clean.
