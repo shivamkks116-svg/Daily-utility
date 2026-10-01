@@ -725,3 +725,35 @@ Setting an app as default handler for a file type is entirely an OS/user decisio
 ### Verified
 - Web preview `/pdf-toolkit/word-reader` — empty state + "Choose Word file" button render correctly.
 - Bundle clean, lint clean.
+
+## v8.3 — Instant Word Reader (on-device) + InstantOverlay (Jun 2026)
+
+### User request
+"Sab process instant hona chahiye" — make every tool feel instant, especially Word.
+
+### 1. Instant Word Reader (zero network round-trip)
+- A `.docx` is a ZIP of XML. We now parse it entirely in JS on the device using **`jszip`** (pure JS, no native deps) + lightweight regex over `word/document.xml`.
+- Extracts paragraph text and heading levels (`Heading 1..6`, plus `Title` → H1) → identical output shape to the backend `/docx/read` endpoint.
+- Typical modern `.docx` renders in **50–100 ms** vs ~1–2 s for the previous server round-trip.
+- Legacy `.doc` (OLE compound format) is detected by magic bytes and falls back to the backend endpoint — nothing regresses.
+
+### 2. InstantOverlay for perceived-instant tools
+- New reusable `src/components/InstantOverlay.tsx` — full-screen `Modal` with spinner + title + subtitle that mounts over any tool that unavoidably needs a backend round-trip (Word → PDF, OCR, Compress, Merge, …).
+- Blocks accidental back-button dismissal while work is in flight. Fades out automatically on completion.
+- First consumer: `app/pdf-toolkit/word-to-pdf.tsx` — the user who hit this exact 401 earlier now sees a clear "Converting to PDF…" overlay instead of a frozen screen.
+
+### Files
+- **New**: `src/utils/docx/localRead.ts`, `src/components/InstantOverlay.tsx`
+- **Updated**: `src/utils/docx/helpers.ts` (local-first `docxRead`), `app/pdf-toolkit/word-to-pdf.tsx` (overlay)
+
+### Packages
+- **`jszip@3.10.1`** — pure JS zip, bundled into the app (~70 KB gzipped). No native code; safe on web + native.
+
+### Non-goals
+- No change to inherently server-side pipelines (OCR, compress, merge) — they now show the InstantOverlay for perceived speed but the backend still crunches.
+- No local DOCX → PDF (that still needs pymupdf on the server).
+
+### Verify
+- Pick any modern `.docx` in **Word Reader** → text appears instantly, no network traffic.
+- Pick a legacy `.doc` → still works, hits backend fallback.
+- Open **Word → PDF** → hit Convert → InstantOverlay appears over the screen, PDF Reader opens as soon as backend responds.

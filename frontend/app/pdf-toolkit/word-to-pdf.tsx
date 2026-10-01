@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState, ProgressBanner } from "@/src/components/toolkit/Primitives";
+import { InstantOverlay } from "@/src/components/InstantOverlay";
 import { pickDocx, docxToPdf, type PickedDocx } from "@/src/utils/docx/helpers";
 import { humanBytes } from "@/src/utils/pdf/helpers";
 import { addRecent } from "@/src/utils/toolkit/recents";
@@ -95,6 +96,11 @@ export default function WordToPdfScreen() {
           </View>
         )}
       </View>
+      <InstantOverlay
+        visible={busy}
+        title={status || "Working…"}
+        subtitle="Keep the app open — this takes just a moment."
+      />
     </SafeAreaView>
   );
 }

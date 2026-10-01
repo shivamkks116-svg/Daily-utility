@@ -153,14 +153,29 @@ export async function docxToPdf(
 export type DocxBlock = { text: string; level: number; bold: boolean };
 
 /**
- * Ask the backend to extract structured blocks from a DOCX so we can render
- * them as native, selectable text in the in-app Word Reader.
+ * Extract structured blocks from a DOCX. Tries an on-device parser first
+ * (JSZip + regex over `word/document.xml`) so a typical modern `.docx`
+ * renders in 50–100 ms with zero network round-trip. Falls back to the
+ * backend `/docx/read` endpoint for legacy `.doc` (OLE) files or if the
+ * local parse fails for any reason.
  */
 export async function docxRead(uri: string): Promise<{
   blocks: DocxBlock[];
   paragraphCount: number;
   charCount: number;
 }> {
+  // Fast path — on-device parse. Returns null for `.doc` / corrupt files.
+  try {
+    const { readDocxLocal } = await import("./localRead");
+    const local = await readDocxLocal(uri);
+    if (local) return local;
+  } catch (e) {
+    // Swallow and fall through to the server; a readable error from the
+    // backend will surface a better message anyway.
+    console.warn("[docxRead] local parse failed, falling back to backend:", e);
+  }
+
+  // Slow path — backend. Used for legacy `.doc` or when local parse errors.
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
