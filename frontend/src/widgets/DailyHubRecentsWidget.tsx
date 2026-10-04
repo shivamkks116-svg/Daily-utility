@@ -9,19 +9,15 @@
  * `WIDGET_RECENTS_KEY` by `syncWidgetRecents` whenever the app's main
  * recents store changes. The task handler reads it synchronously via
  * AsyncStorage inside the headless widget process.
+ *
+ * The `scheme` prop lets the task handler re-render the widget in light
+ * or dark palette on demand.
  */
 import React from "react";
 import { FlexWidget, TextWidget } from "react-native-android-widget";
 
 import type { WidgetRecent } from "./types";
-
-const SURFACE = "#111412";
-const SURFACE_SECONDARY = "#1B221E";
-const SURFACE_TERTIARY = "#252D28";
-const BRAND = "#5EBA8B";
-const BRAND_TILE = "#1B3626";
-const ON_SURFACE = "#E2E6E3";
-const ON_SURFACE_MUTED = "#A0A5A1";
+import { paletteFor, type Scheme } from "./palette";
 
 type Tile = { key: string; emoji: string; label: string; uri: string };
 
@@ -46,7 +42,8 @@ function formatWhen(ts: number): string {
   return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
-function TileView({ tile }: { tile: Tile }) {
+function TileView({ tile, scheme }: { tile: Tile; scheme: Scheme }) {
+  const c = paletteFor(scheme);
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -54,25 +51,25 @@ function TileView({ tile }: { tile: Tile }) {
       style={{
         flex: 1,
         height: 56,
-        backgroundColor: SURFACE_TERTIARY,
+        backgroundColor: c.surfaceTertiary,
         borderRadius: 16,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <TextWidget text={tile.emoji} style={{ fontSize: 18, color: ON_SURFACE }} />
+      <TextWidget text={tile.emoji} style={{ fontSize: 18, color: c.onSurface }} />
       <TextWidget
         text={tile.label}
         maxLines={1}
         truncate="END"
-        style={{ fontSize: 10, fontWeight: "600", color: ON_SURFACE, textAlign: "center" }}
+        style={{ fontSize: 10, fontWeight: "600", color: c.onSurface, textAlign: "center" }}
       />
     </FlexWidget>
   );
 }
 
-function RecentRow({ item }: { item: WidgetRecent }) {
-  // Deep-link based on kind — PDF goes to reader, image to view screen.
+function RecentRow({ item, scheme }: { item: WidgetRecent; scheme: Scheme }) {
+  const c = paletteFor(scheme);
   const uri =
     item.kind === "pdf"
       ? `dailyhubai:///pdf-toolkit/reader?widgetId=${encodeURIComponent(item.id)}`
@@ -86,7 +83,7 @@ function RecentRow({ item }: { item: WidgetRecent }) {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: SURFACE_SECONDARY,
+        backgroundColor: c.surfaceSecondary,
         borderRadius: 14,
         paddingHorizontal: 10,
         paddingVertical: 8,
@@ -98,7 +95,7 @@ function RecentRow({ item }: { item: WidgetRecent }) {
           width: 32,
           height: 32,
           borderRadius: 999,
-          backgroundColor: BRAND_TILE,
+          backgroundColor: c.brandTile,
           alignItems: "center",
           justifyContent: "center",
           marginRight: 10,
@@ -111,20 +108,21 @@ function RecentRow({ item }: { item: WidgetRecent }) {
           text={item.name || "Untitled"}
           maxLines={1}
           truncate="END"
-          style={{ fontSize: 12, fontWeight: "600", color: ON_SURFACE }}
+          style={{ fontSize: 12, fontWeight: "600", color: c.onSurface }}
         />
         <TextWidget
           text={`${item.tool ? item.tool + " · " : ""}${formatWhen(item.createdAt)}`}
           maxLines={1}
           truncate="END"
-          style={{ fontSize: 10, color: ON_SURFACE_MUTED, marginTop: 1 }}
+          style={{ fontSize: 10, color: c.onSurfaceMuted, marginTop: 1 }}
         />
       </FlexWidget>
     </FlexWidget>
   );
 }
 
-function EmptyRecents() {
+function EmptyRecents({ scheme }: { scheme: Scheme }) {
+  const c = paletteFor(scheme);
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -133,7 +131,7 @@ function EmptyRecents() {
         flex: 1,
         marginTop: 6,
         borderRadius: 14,
-        backgroundColor: SURFACE_SECONDARY,
+        backgroundColor: c.surfaceSecondary,
         alignItems: "center",
         justifyContent: "center",
         padding: 12,
@@ -141,17 +139,24 @@ function EmptyRecents() {
     >
       <TextWidget
         text="No recent files yet"
-        style={{ fontSize: 12, fontWeight: "600", color: ON_SURFACE }}
+        style={{ fontSize: 12, fontWeight: "600", color: c.onSurface }}
       />
       <TextWidget
         text="Tap to scan your first PDF ›"
-        style={{ fontSize: 11, color: BRAND, marginTop: 2 }}
+        style={{ fontSize: 11, color: c.brand, marginTop: 2 }}
       />
     </FlexWidget>
   );
 }
 
-export function RecentsWidget({ recents }: { recents: WidgetRecent[] }) {
+export function RecentsWidget({
+  recents,
+  scheme = "dark",
+}: {
+  recents: WidgetRecent[];
+  scheme?: Scheme;
+}) {
+  const c = paletteFor(scheme);
   const top = recents.slice(0, 3);
 
   return (
@@ -159,7 +164,7 @@ export function RecentsWidget({ recents }: { recents: WidgetRecent[] }) {
       style={{
         height: "match_parent",
         width: "match_parent",
-        backgroundColor: SURFACE,
+        backgroundColor: c.surface,
         borderRadius: 24,
         padding: 10,
         flexDirection: "column",
@@ -179,9 +184,9 @@ export function RecentsWidget({ recents }: { recents: WidgetRecent[] }) {
       >
         <TextWidget
           text="DailyHub AI"
-          style={{ fontSize: 13, fontWeight: "700", color: BRAND }}
+          style={{ fontSize: 13, fontWeight: "700", color: c.brand }}
         />
-        <TextWidget text="Open ›" style={{ fontSize: 11, color: ON_SURFACE_MUTED }} />
+        <TextWidget text="Open ›" style={{ fontSize: 11, color: c.onSurfaceMuted }} />
       </FlexWidget>
 
       {/* Quick tiles */}
@@ -194,7 +199,7 @@ export function RecentsWidget({ recents }: { recents: WidgetRecent[] }) {
       >
         {TILES.map((t, i) => (
           <React.Fragment key={t.key}>
-            <TileView tile={t} />
+            <TileView tile={t} scheme={scheme} />
             {i < TILES.length - 1 ? <FlexWidget style={{ width: 6 }} /> : null}
           </React.Fragment>
         ))}
@@ -202,11 +207,11 @@ export function RecentsWidget({ recents }: { recents: WidgetRecent[] }) {
 
       {/* Recents list / empty */}
       {top.length === 0 ? (
-        <EmptyRecents />
+        <EmptyRecents scheme={scheme} />
       ) : (
         <FlexWidget style={{ flex: 1, flexDirection: "column" }}>
           {top.map((r) => (
-            <RecentRow key={r.id} item={r} />
+            <RecentRow key={r.id} item={r} scheme={scheme} />
           ))}
         </FlexWidget>
       )}

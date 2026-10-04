@@ -87,6 +87,14 @@ export async function applyThemeAndReload(mode: ThemeMode): Promise<void> {
     // Older RN or Expo Go may not expose setColorScheme — we still rely
     // on the pref + reload to apply on next start.
   }
+  // Push the new palette into any pinned Android home-screen widgets
+  // before the reload so the user sees them repaint instantly.
+  if (Platform.OS === "android") {
+    try {
+      const { syncWidgetRecents } = await import("@/src/widgets/sync");
+      await syncWidgetRecents();
+    } catch {}
+  }
   // Give the UI a tick to show the "Theme: Light" toast before reload.
   await new Promise<void>((r) => setTimeout(r, 300));
   await reloadRuntime();

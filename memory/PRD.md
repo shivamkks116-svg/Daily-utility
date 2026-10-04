@@ -1008,3 +1008,35 @@ This feature **requires a dev or production build** — widgets cannot run insid
 - Metro web bundle: `✅ No issues found` lint pass across the new files and all modified screens.
 - Web preview boots cleanly, Profile screen hides the Android-only row (checked by Platform.OS gate).
 - Entry file guard: Platform check means iOS/web bundles never resolve the widget task handler module.
+
+## v9.1 — Widget theme follows in-app theme (Oct 2026)
+
+### User ask
+"Widget Theme Sync: Make the home-screen widgets follow your in-app light/dark theme automatically on next refresh."
+
+### What ships
+Both home-screen widgets now repaint in the user's chosen palette the moment they're refreshed, and automatically track Android's day/night mode when the user leaves the app on "System".
+
+Behavior matrix:
+| In-app pref | Widget behavior |
+|-------------|----------------|
+| Light       | Always light palette, regardless of system theme |
+| Dark        | Always dark palette, regardless of system theme |
+| System      | Native `{ light, dark }` dual representation — Android picks per device UI mode |
+
+### Files added
+- `src/widgets/palette.ts` — standalone widget palette (dark + light tokens that mirror `src/theme/index.ts`) plus `resolveWidgetScheme()` and `paletteFor(scheme)` helpers. Pulled out because the main theme module freezes a single palette at JS module-load, which isn't enough for the headless task context that needs to swap palettes per update tick.
+
+### Files edited
+- `src/widgets/DailyHubQuickActionsWidget.tsx` + `src/widgets/DailyHubRecentsWidget.tsx` — both widgets take an optional `scheme` prop and route every color through `paletteFor(scheme)`.
+- `src/widgets/widgetTaskHandler.tsx` — now reads `prefs.theme` from AsyncStorage on every `WIDGET_ADDED | UPDATE | RESIZED` tick. When pref is "light"/"dark" we render a single-palette JSX; when pref is "system" (or missing) we return the library's `{ light, dark }` dual representation so Android resolves it.
+- `src/widgets/sync.ts` — the manual push path (`syncWidgetRecents`) mirrors the task-handler logic: reads the pref, builds either single or dual JSX, forwards it to `requestWidgetUpdate`.
+- `src/theme/apply.ts` — on Android, calls `syncWidgetRecents()` before reloading the runtime so a theme change propagates to pinned widgets instantly instead of waiting for the next 30-min update tick.
+
+### Why dual representation for "system"
+`react-native-android-widget` exposes a `WidgetRepresentation` union that accepts either a single JSX element or a `{ light, dark }` pair (see `node_modules/react-native-android-widget/lib/typescript/api/types.d.ts`). Android's launcher natively swaps between the two based on the device's current UI mode without re-invoking our JS. For "system" users this means the widget flips instantly on day/night, no re-render needed.
+
+### Verification
+- Metro web bundle: `✅ No issues found` lint across the four touched widget files + `apply.ts`.
+- Web preview loads cleanly (login screen renders, no console errors) — confirming the dynamic-import guards keep the native widget module out of the web bundle.
+- Theme chooser flow: `applyThemeAndReload("light")` → `syncWidgetRecents()` → `requestWidgetUpdate` → runtime reload. Light pref now paints Quick-Actions widget with `#F7FAF8` surface + `#1F5F3F` brand on first refresh.

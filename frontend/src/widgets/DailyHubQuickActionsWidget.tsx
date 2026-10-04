@@ -9,16 +9,14 @@
  *
  * Rendered via `react-native-android-widget` RemoteViews — this JSX only
  * runs inside the headless widget task process, never inside the app UI.
+ *
+ * The `scheme` prop lets the task handler re-render the widget in light
+ * or dark palette on demand (see `widgetTaskHandler.tsx`).
  */
 import React from "react";
 import { FlexWidget, TextWidget } from "react-native-android-widget";
 
-const SURFACE = "#111412";
-const SURFACE_TERTIARY = "#252D28";
-const BRAND = "#5EBA8B";
-const BRAND_TILE = "#1B3626";
-const ON_SURFACE = "#E2E6E3";
-const ON_SURFACE_MUTED = "#A0A5A1";
+import { paletteFor, type Scheme } from "./palette";
 
 type Tile = {
   key: string;
@@ -34,7 +32,8 @@ const TILES: Tile[] = [
   { key: "qr",    emoji: "🔳", label: "Scan QR",  uri: "dailyhubai:///qr" },
 ];
 
-function TileView({ tile }: { tile: Tile }) {
+function TileView({ tile, scheme }: { tile: Tile; scheme: Scheme }) {
+  const c = paletteFor(scheme);
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -42,7 +41,7 @@ function TileView({ tile }: { tile: Tile }) {
       style={{
         flex: 1,
         height: "match_parent",
-        backgroundColor: SURFACE_TERTIARY,
+        backgroundColor: c.surfaceTertiary,
         borderRadius: 20,
         padding: 8,
         alignItems: "center",
@@ -54,7 +53,7 @@ function TileView({ tile }: { tile: Tile }) {
           width: 38,
           height: 38,
           borderRadius: 999,
-          backgroundColor: BRAND_TILE,
+          backgroundColor: c.brandTile,
           alignItems: "center",
           justifyContent: "center",
           marginBottom: 4,
@@ -62,7 +61,7 @@ function TileView({ tile }: { tile: Tile }) {
       >
         <TextWidget
           text={tile.emoji}
-          style={{ fontSize: 20, color: ON_SURFACE }}
+          style={{ fontSize: 20, color: c.onSurface }}
         />
       </FlexWidget>
       <TextWidget
@@ -72,7 +71,7 @@ function TileView({ tile }: { tile: Tile }) {
         style={{
           fontSize: 11,
           fontWeight: "600",
-          color: ON_SURFACE,
+          color: c.onSurface,
           textAlign: "center",
         }}
       />
@@ -80,13 +79,14 @@ function TileView({ tile }: { tile: Tile }) {
   );
 }
 
-export function QuickActionsWidget() {
+export function QuickActionsWidget({ scheme = "dark" }: { scheme?: Scheme } = {}) {
+  const c = paletteFor(scheme);
   return (
     <FlexWidget
       style={{
         height: "match_parent",
         width: "match_parent",
-        backgroundColor: SURFACE,
+        backgroundColor: c.surface,
         borderRadius: 24,
         padding: 10,
         flexDirection: "column",
@@ -106,11 +106,11 @@ export function QuickActionsWidget() {
       >
         <TextWidget
           text="DailyHub AI"
-          style={{ fontSize: 13, fontWeight: "700", color: BRAND }}
+          style={{ fontSize: 13, fontWeight: "700", color: c.brand }}
         />
         <TextWidget
           text="Open ›"
-          style={{ fontSize: 11, color: ON_SURFACE_MUTED }}
+          style={{ fontSize: 11, color: c.onSurfaceMuted }}
         />
       </FlexWidget>
 
@@ -125,7 +125,7 @@ export function QuickActionsWidget() {
       >
         {TILES.map((t, i) => (
           <React.Fragment key={t.key}>
-            <TileView tile={t} />
+            <TileView tile={t} scheme={scheme} />
             {i < TILES.length - 1 ? (
               <FlexWidget style={{ width: 6 }} />
             ) : null}
