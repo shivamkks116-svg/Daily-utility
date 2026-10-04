@@ -869,3 +869,34 @@ Hide Premium surface until RevenueCat + Play billing is live, and give the owner
 2. Redeploy backend (Emergent Publish).
 3. Sign in with that account → open Profile → tap **Admin panel** → flip the Premium switch to ON.
 4. Every logged-in user picks up the change on the next launch (or immediately on refresh via the admin panel's `refreshFlags()`).
+
+## v8.7 — Admin-only Premium preview (Oct 2026)
+
+### User request
+"Premium page temporarily hide karo, aur woh sirf admin panel mein dikhe" — admins should be able to preview the Premium page without flipping the public flag.
+
+### Fix
+- **`app/premium/index.tsx`**:
+  - Reads optional `?admin=1` query param.
+  - Silently probes `GET /api/admin/config`. If the server returns 200, flags the session as a verified admin and sets `bypassGuard = true`.
+  - When `bypassGuard` is on, the premium screen renders normally even if `premium_enabled=false`.
+  - Shows a persistent banner at the top: *"Admin preview — this page is hidden for regular users"*.
+  - Rendered the bounce path inside the main `return` (JSX conditional) instead of early-returning before `useMemo` / `useEffect`, fixing a "Rendered fewer hooks than expected" crash on first mount.
+- **`app/admin/index.tsx`**:
+  - Added a "**Preview Premium page**" button under the Premium toggle. Opens `/premium?admin=1` so the admin can walk through the page in production exactly as a real buyer would see it.
+
+### Not changed
+- Public `premium_enabled` default still `false`.
+- Non-admins hitting `/premium?admin=1` still get bounced to Home (admin probe fails with 403 → bypass denied).
+
+### Verified
+- Web preview as unauth user: `/premium?admin=1` → bounces to Home ✓
+- Web preview as unauth user: `/admin` → "Admin only" lock screen ✓
+- Lint clean, bundle clean, no hooks-order errors.
+
+### How the admin actually uses it
+1. Backend `.env` → `ADMIN_EMAILS=your-google-email@gmail.com`, redeploy.
+2. Sign in with that account in the APK.
+3. Profile → **Admin panel** (row only visible to admins).
+4. Tap **Preview Premium page** → `/premium?admin=1` opens with the preview banner.
+5. Verify copy, pricing, CTA, FAQs — then flip the main toggle ON when you're ready to launch.

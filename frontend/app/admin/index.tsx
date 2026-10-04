@@ -196,6 +196,14 @@ export default function AdminScreen() {
           ) : (
             <Text style={styles.metaText}>Never changed (using default)</Text>
           )}
+          <Pressable
+            testID="preview-premium"
+            onPress={() => router.push("/premium?admin=1")}
+            style={({ pressed }) => [styles.previewBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="eye" size={16} color={colors.brandPrimary} />
+            <Text style={styles.previewBtnText}>Preview Premium page</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -287,4 +295,23 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   cardSub: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2, lineHeight: 16 },
   metaText: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs },
+  previewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1,
+    borderColor: colors.brandPrimary,
+    alignSelf: "flex-start",
+  },
+  previewBtnText: {
+    color: colors.brandPrimary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+  },
 });

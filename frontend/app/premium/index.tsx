@@ -15,7 +15,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors, spacing, radius, fontSize, fontWeight } from "@/src/theme";
 import {
   useSubscription,
@@ -23,6 +23,7 @@ import {
   REVENUECAT_ENTITLEMENT_IDENTIFIER,
 } from "@/src/subscription/RevenueCat";
 import { useFeatureFlags } from "@/src/features/flags";
+import { api } from "@/src/api/client";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -172,21 +173,46 @@ export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const sub = useSubscription();
   const { flags, loading: flagsLoading } = useFeatureFlags();
+  const params = useLocalSearchParams<{ admin?: string }>();
+  const adminPreview = params.admin === "1";
+  const [adminVerified, setAdminVerified] = useState(false);
+  const [adminProbeDone, setAdminProbeDone] = useState(!adminPreview);
   const [selected, setSelected] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // Guard — if the admin has flipped Premium OFF, bounce back to Home.
-  // We wait for the first flag fetch to resolve so a slow network doesn't
-  // momentarily hide a legitimately-enabled Premium screen.
+  // When the user asks for an admin preview (`?admin=1`), silently probe the
+  // admin endpoint to confirm they really are on the ADMIN_EMAILS allow-list.
+  // Only verified admins get to bypass the Premium feature-flag guard.
   React.useEffect(() => {
-    if (!flagsLoading && !flags.premium_enabled) {
+    if (!adminPreview) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await api("/admin/config", { method: "GET" });
+        if (!cancelled) setAdminVerified(true);
+      } catch {
+        if (!cancelled) setAdminVerified(false);
+      } finally {
+        if (!cancelled) setAdminProbeDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminPreview]);
+
+  // Guard — if the admin has flipped Premium OFF, bounce back to Home.
+  // We wait for the first flag fetch (and the admin probe, when relevant)
+  // so a slow network doesn't momentarily hide a legitimately-enabled page.
+  const bypassGuard = adminPreview && adminVerified;
+  React.useEffect(() => {
+    if (flagsLoading || !adminProbeDone) return;
+    if (!flags.premium_enabled && !bypassGuard) {
       router.replace("/(main)/home");
     }
-  }, [flagsLoading, flags.premium_enabled, router]);
+  }, [flagsLoading, flags.premium_enabled, adminProbeDone, bypassGuard, router]);
 
-  if (!flagsLoading && !flags.premium_enabled) {
-    return null; // bounce in-flight
-  }
+  const shouldBounce = !flagsLoading && adminProbeDone && !flags.premium_enabled && !bypassGuard;
 
   const cards = useMemo(() => {
     const list = sub.packages || [];
@@ -311,8 +337,18 @@ export default function PremiumScreen() {
   /* --------------------------- Paywall ------------------------------ */
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <Header title="DailyHub Premium" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 160 }}>
+      {shouldBounce ? null : (
+        <>
+          <Header title="DailyHub Premium" onBack={() => router.back()} />
+          {bypassGuard ? (
+            <View style={styles.adminBanner}>
+              <Ionicons name="eye" size={14} color={colors.onBrandPrimary} />
+              <Text style={styles.adminBannerText}>
+                Admin preview — this page is hidden for regular users
+              </Text>
+            </View>
+          ) : null}
+          <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 160 }}>
         {/* Gradient hero */}
         <LinearGradient
           colors={[colors.brandTertiary, colors.surface]}
@@ -543,6 +579,8 @@ export default function PremiumScreen() {
           <Text style={styles.envNote}>Purchases only work on Android release / dev builds.</Text>
         ) : null}
       </View>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -575,6 +613,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  adminBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.brandPrimary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    justifyContent: "center",
+  },
+  adminBannerText: {
+    color: colors.onBrandPrimary,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.2,
   },
   hBtn: {
     width: 40,
