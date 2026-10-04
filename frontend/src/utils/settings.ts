@@ -24,8 +24,12 @@ export const THEME_LABELS: Record<ThemeMode, string> = {
 };
 
 export async function getTheme(): Promise<ThemeMode> {
-  const v = await storage.getItem<string>(SETTINGS_KEYS.theme, "dark");
-  return (v as ThemeMode) || "dark";
+  // Default to "system" so a fresh install picks the user's OS /
+  // browser preference (via `Appearance.getColorScheme()`) instead of
+  // forcing dark. Users who want a hard-pin can still choose Dark or
+  // Light explicitly from the Theme chooser.
+  const v = await storage.getItem<string>(SETTINGS_KEYS.theme, "system");
+  return (v as ThemeMode) || "system";
 }
 
 export async function setTheme(v: ThemeMode) {

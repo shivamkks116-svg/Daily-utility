@@ -46,15 +46,32 @@ export default function SharedImageViewer() {
     sharedUri?: string;
     sharedName?: string;
     sharedSize?: string;
+    widgetId?: string;
   }>();
 
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [widgetEntry, setWidgetEntry] = useState<{ uri: string; name: string; size: number } | null>(null);
 
-  const uri = params.sharedUri ? String(params.sharedUri) : null;
-  const name = params.sharedName ? String(params.sharedName) : "Shared image";
-  const size = params.sharedSize ? Number(params.sharedSize) : 0;
+  // Resolve widget deep-link to a cached entry (image).
+  useEffect(() => {
+    if (!params.widgetId || widgetEntry) return;
+    (async () => {
+      try {
+        const { openWidgetRecent } = await import("@/src/widgets/sync");
+        const entry = await openWidgetRecent(String(params.widgetId));
+        if (entry && entry.kind === "image") {
+          setWidgetEntry({ uri: entry.uri, name: entry.name, size: entry.size || 0 });
+        }
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.widgetId]);
+
+  const uri = params.sharedUri ? String(params.sharedUri) : widgetEntry?.uri ?? null;
+  const name = params.sharedName ? String(params.sharedName) : widgetEntry?.name ?? "Shared image";
+  const size = params.sharedSize ? Number(params.sharedSize) : widgetEntry?.size ?? 0;
 
   const previewWidth = useMemo(
     () => Dimensions.get("window").width - spacing.lg * 2,

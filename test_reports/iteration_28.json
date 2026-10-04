@@ -1,0 +1,56 @@
+{
+  "summary": "Theme-switcher fix is WORKING on web. Key metrics T2 (Light) and T3 (Dark) both PASS — palette now swaps correctly after window.location.reload() because src/theme/index.ts reads localStorage synchronously at module load. Persistence (T5), System-mode media tracking (T4/T4b with CDP emulation), and no-reload-loop (T6, nav_count=2) also pass. Only residual issue: when no pref exists (T1 fresh / T7 cleared storage), the Theme row label shows 'Dark (Material You)' (because getTheme() default is 'dark') while the resolved palette is light-media (because readSyncPref returns null for missing key and the resolver falls through to Appearance.getColorScheme() which returns 'light' in a light-mode browser). The review request stated this case should 'render in dark (fallback)', but the fix implementation prefers Appearance over a hard-coded dark default. This creates a cosmetic label/palette disagreement on first launch only; once the user picks any explicit mode, label and palette stay in sync. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "src/theme/index.ts resolveScheme + src/utils/settings.ts getTheme default",
+        "issue": "On first launch (no 'prefs.theme' in localStorage) the Theme row label shows 'Dark (Material You)' (settings.ts getTheme default='dark') while the palette renders Light because resolveScheme falls through to Appearance.getColorScheme() which reflects the browser prefers-color-scheme (light on default Chromium). Expected by review: fallback dark. Either (a) hard-fallback to 'dark' when readSyncPref() returns null AND no explicit pref exists, OR (b) change the row label to also respect Appearance when pref is unset. Low priority — self-heals once user makes a choice. Reference: /app/frontend/src/theme/index.ts:117-121, /app/frontend/src/utils/settings.ts:26-29.",
+        "testID": "row-theme / profile-screen",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots/retest_t1.png",
+    "/app/test_reports/screenshots/retest_t2_light.png",
+    "/app/test_reports/screenshots/retest_t3_dark.png",
+    "/app/test_reports/screenshots/retest_t4_system.png",
+    "/app/test_reports/screenshots/retest_t5_persistence.png",
+    "/app/test_reports/screenshots/retest_t6_noloop.png",
+    "/app/test_reports/screenshots/retest_t7_first_launch.png"
+  ],
+  "per_test_results": {
+    "T1_initial_state": "PARTIAL — Observed bg=rgb(247,250,248) light, Theme row 'Dark (Material You)', pref=null. Review expected dark fallback #111412. Reason: readSyncPref() returns null when no key, resolver falls to Appearance.getColorScheme() → 'light' (browser is light-mode). Label/palette disagree only in this cold-start edge case.",
+    "T2_switch_to_light": "PASS — pref='light', bg=rgb(247,250,248)=#F7FAF8 (light surface), row='Light'. Reload fired, palette swapped. ✓",
+    "T3_switch_back_to_dark": "PASS — pref='dark', bg=rgb(17,20,18)=#111412 (dark surface), row='Dark (Material You)'. Reload fired, palette swapped. ✓ — this is the critical fix verification.",
+    "T4_match_system_light_browser": "PASS — pref='system', bg=rgb(247,250,248) (light), row='Match system', media=light. Correct fallthrough to Appearance.",
+    "T4b_match_system_dark_browser": "PASS — with page.emulate_media(color_scheme='dark') and pref='system', bg=rgb(17,20,18) (dark), media=dark. ✓",
+    "T5_persistence_light_after_reload": "PASS — after window.location.reload() with pref='light', bg=rgb(247,250,248), row='Light'. Light survives reload.",
+    "T6_no_infinite_reload_loop_dark": "PASS — pref='dark' + reload: nav_count=2 (one main-frame nav + child frame), bg=rgb(17,20,18) dark palette rendered. Bootstrap short-circuits on web as designed.",
+    "T7_first_launch_no_pref": "PARTIAL — same as T1: cleared localStorage, bg=rgb(247,250,248) light, row='Dark (Material You)'. Review expected dark fallback. Minor label/palette mismatch on cold start only.",
+    "extra_home_light": "PASS — /(main)/home with pref='light' bg=rgb(247,250,248).",
+    "extra_home_dark": "PASS — /(main)/home with pref='dark' bg=rgb(17,20,18).",
+    "extra_pdf_toolkit": "SKIPPED — selector for pdf-toolkit root bg failed (not a theme bug, test harness only). Visual inspection via screenshot not captured; recommend adding testID='pdf-toolkit-screen' on the root View in app/pdf-toolkit.tsx for future verification."
+  },
+  "rca_of_issue": "Residual-only (low priority). On first launch no 'prefs.theme' is stored, so readSyncPref() returns null and resolveScheme() falls through to Appearance.getColorScheme(). On RN-Web, Appearance.getColorScheme() reads window.matchMedia('(prefers-color-scheme: dark)'). In a default Chromium viewport the media query returns 'light', so the palette resolves to LIGHT. Meanwhile the ThemeRow renders using themeMode state loaded via getTheme() which hard-defaults to 'dark' (settings.ts:27). Hence the row says 'Dark' while the UI is Light. FIX OPTIONS: (1) In src/theme/index.ts: return 'dark' as the ultimate fallback instead of Appearance.getColorScheme() when pref is truly null (matches review's stated expectation but loses OS-tracking on first launch). (2) In src/utils/settings.ts: change getTheme default to 'system' so the row label matches when no explicit choice exists. (3) Leave as-is since any explicit user action immediately resolves the discrepancy. Option (2) is the cleanest — makes 'first launch' == 'system mode' which is also the modern mobile convention.",
+  "action_items": [
+    "LOW: Decide between (a) hard-fallback palette to dark in src/theme/index.ts:120 when no pref, or (b) change settings.ts getTheme() default from 'dark' to 'system' so the row label matches first-launch behavior. Recommend (b) — it's one line and aligns label with Appearance-based palette.",
+    "OPTIONAL: Add testID='pdf-toolkit-screen' and testID='home-screen' root View attrs so future regression tests can read computed background without ambiguity.",
+    "OPTIONAL: Investigate 'shadow*' and 'props.pointerEvents' deprecation warnings surfaced in console (not blocking, but will become errors in future RN versions)."
+  ],
+  "critical_code_review_comments": [
+    "src/theme/index.ts:117-121 — resolveScheme falls through to Appearance when pref is null; works correctly but creates visible disagreement with getTheme()'s 'dark' default on first launch. Minor.",
+    "src/theme/apply.ts:108 — web short-circuit in bootstrapTheme is correctly implemented (early return) and prevents the reload storm from iteration_27. Verified via T6.",
+    "src/theme/index.ts:98-115 — readSyncPref correctly JSON-parses the AsyncStorage-wrapped value stored under the unprefixed 'prefs.theme' key. Verified: pref='light' → bg light, pref='dark' → bg dark."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "~85% (5 strict PASS, 2 PARTIAL on cosmetic cold-start label mismatch, 0 FAIL; both critical metrics T2 and T3 PASS)"},
+  "seed_data_creation": "none — localStorage manipulated inline via page.evaluate().",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Theme switcher now works correctly on web preview. T2/T3 palette swap verified via rgb() computed background. If main agent decides to address the cold-start label/palette disagreement (T1/T7), simply re-verify T1 and T7 after the change — the other five tests are stable. Use page.emulate_media(color_scheme='dark') for the dark-system branch (T4b)."
+}

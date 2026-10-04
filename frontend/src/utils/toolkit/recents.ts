@@ -41,15 +41,28 @@ export async function addRecent(entry: Omit<RecentEntry, "id" | "createdAt"> & P
   filtered.unshift(item);
   const trimmed = filtered.slice(0, MAX);
   await storage.setItem(KEY, JSON.stringify(trimmed));
+  // Fire-and-forget: push the fresh snapshot to any pinned Android widgets.
+  try {
+    const { syncWidgetRecents } = await import("@/src/widgets/sync");
+    syncWidgetRecents();
+  } catch {}
 }
 
 export async function removeRecent(id: string): Promise<void> {
   const cur = await listRecents();
   await storage.setItem(KEY, JSON.stringify(cur.filter(r => r.id !== id)));
+  try {
+    const { syncWidgetRecents } = await import("@/src/widgets/sync");
+    syncWidgetRecents();
+  } catch {}
 }
 
 export async function clearRecents(): Promise<void> {
   await storage.removeItem(KEY);
+  try {
+    const { syncWidgetRecents } = await import("@/src/widgets/sync");
+    syncWidgetRecents();
+  } catch {}
 }
 
 const FAV_KEY = "dailyhub_toolkit_favs_v1";

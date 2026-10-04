@@ -30,7 +30,7 @@ import { PdfViewer } from "@/src/components/PdfViewer";
 export default function PdfReaderScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string }>();
+  const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string; widgetId?: string }>();
   const [file, setFile] = useState<PickedPdf | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,6 +47,21 @@ export default function PdfReaderScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.sharedUri]);
+
+  // Load a PDF selected from the home-screen widget.
+  useEffect(() => {
+    if (!params.widgetId || file) return;
+    (async () => {
+      try {
+        const { openWidgetRecent } = await import("@/src/widgets/sync");
+        const entry = await openWidgetRecent(String(params.widgetId));
+        if (entry && entry.kind === "pdf") {
+          setFile({ uri: entry.uri, name: entry.name, size: entry.size || 0 });
+        }
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.widgetId]);
 
   const pick = async () => {
     try {

@@ -1,0 +1,60 @@
+{
+  "summary": "Theme-switcher fix is BROKEN on the web preview. Toggling Light/Dark/System from Profile correctly updates (a) the AsyncStorage/localStorage pref and (b) the Theme-row label, but has NO VISIBLE EFFECT on the rendered palette. The profile/home background stays locked at #F7FAF8 (light surface) regardless of selection. Root cause confirmed with CDP: `src/theme/index.ts` resolves the palette synchronously at module load from `Appearance.getColorScheme()`, which on react-native-web is driven by the browser's `prefers-color-scheme` media query (not by the stored pref and not by `Appearance.setColorScheme`, whose override does NOT survive `window.location.reload()`). When I emulated `prefers-color-scheme: dark` via CDP and reloaded with pref=\"dark\", the palette correctly flipped to #111412 — proving the palette is tied to the OS/browser media query, not to the user's choice. The native-only reload-and-rebuild strategy works on iOS/Android (where setColorScheme persists across expo-updates reloadAsync) but fundamentally cannot work on web. User's original complaint 'Theme apply nahi ho raha hai' is NOT RESOLVED on the web target that the review request explicitly asked to verify.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "src/theme/index.ts + src/theme/apply.ts (web path)",
+        "issue": "Theme toggle has no visible effect on web preview. Palette is baked at module load from `Appearance.getColorScheme()`, which on RN-Web reads `prefers-color-scheme` media query. `Appearance.setColorScheme()` is reset by `window.location.reload()`, so the native-style reload-and-rebuild loop can never apply the stored pref on web. Reference: /app/frontend/src/theme/index.ts:90-92, /app/frontend/src/theme/apply.ts:33-47.",
+        "testID": "row-theme / profile-screen",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "src/theme/apply.ts applyThemeAndReload",
+        "issue": "300 ms toast 'Theme: X · reloading…' is not visible on web because the toast state does not render before the reload races it. Only functional on native where the toast lives through expo-updates reload or DevSettings.reload. Reference: /app/frontend/src/theme/apply.ts:90-92.",
+        "testID": "profile-toast",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Profile → Theme chooser → apply",
+        "issue": "setTheme() writes correct value to localStorage ('dark'/'light'/'system'), THEME_LABELS resolves correctly in the Theme row, but the `colors` object imported by every screen never flips — all screens continue to render in whatever palette was picked from the browser media query at first module eval.",
+        "affected_testIDs": ["row-theme", "profile-screen", "home-screen", "picker-option-light", "picker-option-dark", "picker-option-system"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/screenshots/t1_initial.png", "/app/test_reports/screenshots/t2b_after_light.png", "/app/test_reports/screenshots/t3_after_dark.png", "/app/test_reports/screenshots/t4_after_system.png", "/app/test_reports/screenshots/t5_persistence.png", "/app/test_reports/screenshots/t6_dark_reload.png", "/app/test_reports/screenshots/t7_first_launch.png"],
+  "per_test_results": {
+    "T1_initial_state_dark": "FAIL — expected #111412 dark, observed profile-bg=rgb(247,250,248)=#F7FAF8 (light). Theme row label was 'Dark (Material You)' (default), stored pref=null. The label and the actual palette disagree on web.",
+    "T2_switch_to_light": "PARTIAL PASS — pref flipped to 'light', Theme row shows 'Light', background stayed #F7FAF8 (already light). Home bg #F7FAF8. '/pdf-toolkit' route resolved to login redirect so could not verify tool screen. Toast was not observable before reload fired.",
+    "T3_switch_back_to_dark": "FAIL — pref flipped to 'dark', Theme row shows 'Dark (Material You)', but profile-bg stayed rgb(247,250,248)=#F7FAF8. The dark palette (#111412) never applied.",
+    "T4_match_system": "PARTIAL PASS — pref 'system', label 'Match system'. Playwright/chromium prefers-color-scheme=light so OS mapping to light is correct; bg #F7FAF8. Did not exercise the OS=dark branch via the UI, only via CDP emulation (see RCA below).",
+    "T5_persistence_light_after_manual_reload": "PASS — after manual window.location.reload with pref='light', palette remained #F7FAF8 and label stayed 'Light'. Note: this is trivially true because web default is light anyway.",
+    "T6_no_infinite_reload_loop_on_dark": "PARTIAL PASS — single manual reload with pref='dark' did not storm the frame (navCount=2, no loop). HOWEVER palette did not switch to dark either (#F7FAF8 still). So the loop-guard works, but at the cost of ignoring the user's dark pref on web.",
+    "T7_first_launch_no_pref": "PARTIAL FAIL — storage cleared, no reload storm (navCount=2) ✓. But expected 'dark default' per the request; actual bg was #F7FAF8 light because browser media query is 'light'. The pref default of 'dark' in getTheme() is never honored visually on web."
+  },
+  "rca_of_issue": "ROOT CAUSE: On React Native Web, `Appearance.getColorScheme()` returns `window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'`. `src/theme/index.ts` captures this synchronously at module eval and freezes `colors` to LIGHT or DARK. `Appearance.setColorScheme(mode)` only updates an in-memory override; a full page reload (which is the only reload path on web) wipes that override and the next module eval re-reads the media query, not the stored pref. PROOF: With localStorage pref='dark' and no CDP emulation, bg=rgb(247,250,248)=#F7FAF8. After `await page.emulate_media(color_scheme='dark')` + reload with the same pref, bg=rgb(17,20,18)=#111412 — the palette tracks the media query, not the pref. MITIGATION OPTIONS for main agent: (1) In `src/theme/index.ts`, on web only, synchronously read the stored pref from `window.localStorage.getItem('prefs.theme')`, parse it, and if it is 'light'/'dark' use it directly; only fall through to `Appearance.getColorScheme()` for 'system' or when missing. This makes the module-load palette reflect the stored choice without any reload. (2) Alternatively, write the resolved scheme to localStorage under a dedicated key during `applyThemeAndReload`, and read that same key sync in theme/index.ts. (3) Convert the app to a reactive theme store (zustand/context) so `colors` is read via a hook — removes the need for a reload entirely. Option (1) is the smallest surgical fix. Also recommend seeding `document.documentElement.style.colorScheme` to prevent FOUC on scrollbars.",
+  "action_items": [
+    "CRITICAL: Fix web branch of theme resolver — read stored pref synchronously (localStorage) in `src/theme/index.ts` and derive the palette from it; only use `Appearance.getColorScheme()` as a fallback when pref is 'system' or missing. Without this, Theme switcher is a no-op on web.",
+    "After the fix above, the reload-and-rebuild path still works unchanged — `window.location.reload()` after `setTheme` is enough; `setColorScheme` call becomes a no-op guard for native.",
+    "Verify bootstrap's loop guard once the palette is pref-driven: with pref='dark' on web, bootstrap will see current!=scheme (because web Appearance isn't actually override-aware across reload). Either (a) make the guard web-aware (skip reload on web entirely once palette is pref-driven) or (b) compare against the stored pref directly, not Appearance.",
+    "Toast 'Theme: X · reloading…' is not observable on web because the reload races it. Either delay reload by ~400 ms AFTER a paint tick or inline a tiny imperative DOM toast before reload on the web path.",
+    "Add a smoke testID (e.g., `data-testid=\"theme-active\"` on profile-screen with the resolved mode) to make the next regression test trivial.",
+    "Consider migrating to a reactive theme (context + hook) long-term; the module-load-frozen palette makes every future dynamic theming feature require a full reload."
+  ],
+  "critical_code_review_comments": [
+    "`src/theme/index.ts:90` — relying on `Appearance.getColorScheme()` as the single source of truth on web is incorrect; it ignores the stored pref and only tracks the browser media query.",
+    "`src/theme/apply.ts:85` — `Appearance.setColorScheme` is best-effort on RN-Web and does NOT persist across `window.location.reload()`. Comment on line 86-88 is misleading because that fallback (reload + rebuild) does not re-pick the user's pref on web.",
+    "`src/theme/apply.ts:109` — `bootstrapTheme` compares `current !== scheme` using `Appearance.getColorScheme()`. On web this will always disagree with a non-default pref, meaning bootstrap would try to reload every time; the only reason we don't observe a storm is that `setColorScheme` DOES update the in-memory module value within the same tick before `getColorScheme` is read again — but this is coincidental and fragile.",
+    "`src/utils/settings.ts:26-29` — `getTheme()` default is 'dark' but on web this default is overridden visually by the browser preference; the discrepancy between stored default and rendered palette produces the exact user-visible bug ('label says Dark, UI looks Light')."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "30% (2 of 7 strict pass, 3 partial, 2 fail)"},
+  "seed_data_creation": "none",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent re-fixes `src/theme/index.ts` to resolve palette from the stored localStorage pref on web (recommended Option 1 in rca_of_issue), re-run T1–T7. Key assertions: (a) After selecting Dark, profile-screen bg must become rgb(17,20,18); (b) After selecting Light, profile-screen bg must be rgb(247,250,248); (c) After selecting System in a light-pref browser, bg=rgb(247,250,248); (d) After selecting System in a dark-pref browser (page.emulate_media color_scheme='dark'), bg=rgb(17,20,18); (e) Across a hard reload, the previously picked palette must persist; (f) No reload loop (count navs ≤ 2 per manual reload). To exercise the OS=dark branch use `await page.emulate_media(color_scheme='dark')` before navigating."
+}

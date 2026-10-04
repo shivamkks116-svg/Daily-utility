@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { LogBox, StatusBar, View } from "react-native";
+import { LogBox, Platform, StatusBar, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "@/src/utils/keyboard";
@@ -14,9 +14,16 @@ import { initializeRevenueCat, SubscriptionProvider } from "@/src/subscription/R
 import { AdStartup } from "@/src/ads/native";
 import { useSharedIntentHandler } from "@/src/utils/pdf/sharedIntent";
 import { FeatureFlagsProvider } from "@/src/features/flags";
+import { bootstrapTheme } from "@/src/theme/apply";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
+
+// Kick off the theme bootstrap before the first render so a saved
+// "light" preference flips the native color scheme + reloads the JS
+// bundle exactly once. Fire-and-forget — the reload (if needed) will
+// restart the whole runtime anyway.
+bootstrapTheme();
 
 // Module-scope RevenueCat init — MUST run once per app launch BEFORE any component mounts.
 try { initializeRevenueCat(); } catch (e) { console.warn("[RC] init failed:", e); }
@@ -24,6 +31,21 @@ try { initializeRevenueCat(); } catch (e) { console.warn("[RC] init failed:", e)
 function InnerLayout() {
   const { user } = useAuth();
   useSharedIntentHandler();
+
+  // Keep Android home-screen widgets in sync with the user's recents
+  // store. Fires once per app launch and whenever the user ID flips
+  // (sign-in / sign-out) so a fresh account doesn't show the previous
+  // user's documents in their widget.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    (async () => {
+      try {
+        const { syncWidgetRecents } = await import("@/src/widgets/sync");
+        await syncWidgetRecents();
+      } catch {}
+    })();
+  }, [user?.user_id]);
+
   return (
     <SubscriptionProvider userId={user?.user_id}>
       <View style={{ flex: 1, backgroundColor: colors.surface }}>

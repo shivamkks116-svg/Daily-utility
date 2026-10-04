@@ -928,3 +928,83 @@ The Profile row updates automatically — no code edit required.
 - `/(main)/profile` web preview now renders **"Version · 1.0.2"** ✓
 - Bundle inspection: `"version":"1.0.2"` in the inlined manifest ✓
 - Lint clean, Metro clean restart ✓
+
+## v8.9 — Theme switcher actually applies (Oct 2026)
+
+### User report
+"Theme apply nahi ho raha hai" — the Profile → Theme chooser saved the pref but had no visible effect.
+
+### Root cause
+`src/theme/index.ts` exported a single static Dark palette. `setTheme()` wrote `prefs.theme` to AsyncStorage but no code path ever read it back to pick a different palette. On top of that, every `StyleSheet.create()` across 67 files freezes the color values at module load, so a mid-session mutation of the exported `colors` object would never reach already-created stylesheets.
+
+### Fix
+1. **`src/theme/index.ts`** — now defines both `DARK` and `LIGHT` palettes and picks one at module-load time via a two-step resolver:
+   - **Web**: synchronously reads `window.localStorage.getItem("prefs.theme")` (AsyncStorage on react-native-web is a transparent localStorage wrapper, keys unprefixed, values JSON-stringified). Accepts `"light" | "dark"`; anything else falls through to Appearance → `"dark"`.
+   - **Native**: reads `Appearance.getColorScheme()`. The user's chosen scheme is pinned via `Appearance.setColorScheme(...)` in the native layer, which survives a JS reload — so the module-load read returns the right palette.
+2. **`src/theme/apply.ts`** (new) — `applyThemeAndReload(mode)` persists the pref via `setTheme()`, pins the native color scheme, then reloads the JS runtime. Web → `window.location.reload()`, native → `expo-updates.reloadAsync()` with a `DevSettings.reload()` fallback. `bootstrapTheme()` runs at app launch to seed `Appearance` from the saved pref on native, short-circuits on web (localStorage already drives the module read), and prevents reload loops by comparing current vs. target scheme.
+3. **`app/_layout.tsx`** — calls `bootstrapTheme()` at module scope before any screen renders.
+4. **`app/(main)/profile.tsx`** — `chooseTheme()` now routes through `applyThemeAndReload()` instead of merely calling `setTheme()`.
+5. **`src/utils/settings.ts`** — `getTheme()` defaults to `"system"` so a fresh install respects the user's OS/browser `prefers-color-scheme`, no longer locks to dark.
+
+### Packages added
+- `expo-updates@~29.0.14` — needed for `Updates.reloadAsync()` on native. Pure Expo native dep; no manual linking.
+
+### Verification
+Testing agent iteration 28 re-ran the 7-test matrix on the web preview:
+- **T2 Switch to Light**: PASS — background → `#F7FAF8` after reload.
+- **T3 Switch to Dark**: PASS — background → `#111412` after reload.
+- **T4 System (light + dark prefers-color-scheme)**: PASS both.
+- **T5 Persistence after F5**: PASS.
+- **T6 No reload storm**: PASS (nav_count = 2).
+- Home + PDF Toolkit also render with the chosen palette.
+- No console errors.
+
+Residual: initial Theme row label used to lag the actual palette on first launch (said "Dark" while palette matched browser). Fixed by changing `getTheme()` default to `"system"`.
+
+## v9.0 — Android Home Screen Widgets (Oct 2026)
+
+### User ask
+"Android Home Screen Widget — Quick access tiles (PDF scan, AI chat shortcut, Recent files) — Haan, build karein."
+
+### Shipped
+Two home-screen widgets powered by `react-native-android-widget@0.22.1`, picked over Jetpack Glance for its JS-driven RemoteViews bridge (no second native toolchain, works entirely from React source).
+
+1. **DailyHub Quick Actions** (4×1 cell, 250×110dp)
+   • Four tap tiles: Scan PDF, AI Chat, New Note, Scan QR
+   • Each tile deep-links via `OPEN_URI` → `dailyhubai:///…`
+   • Header row tap opens the home tab.
+
+2. **DailyHub Recent Files** (4×3 cell, 250×180dp)
+   • Same four quick tiles across the top
+   • Below: scrollable list of the user's 3 most recent files from the toolkit recents store
+   • Each row tap deep-links to the right reader (`/pdf-toolkit/reader?widgetId=…` or `/image-toolkit/view?widgetId=…`)
+   • Empty state card nudges the user to scan their first PDF.
+
+### Files added
+- `src/widgets/types.ts` — shared `WidgetRecent` shape + storage key.
+- `src/widgets/DailyHubQuickActionsWidget.tsx` — RemoteViews JSX for the quick-tiles widget.
+- `src/widgets/DailyHubRecentsWidget.tsx` — RemoteViews JSX for the recents widget.
+- `src/widgets/widgetTaskHandler.tsx` — headless handler for WIDGET_ADDED / WIDGET_UPDATE / WIDGET_RESIZED / WIDGET_DELETED / WIDGET_CLICK events.
+- `src/widgets/sync.ts` — `syncWidgetRecents()`, `openWidgetRecent(id)`, `requestPinQuickActions()`. All Android-only (web / iOS → no-ops; dynamic `import()` keeps Metro's web bundle free of the native TurboModule surface).
+- `index.ts` (new project entry) — registers the widget task handler on Android *before* importing `expo-router/entry` so the headless JS context picks it up.
+
+### Files edited
+- `app.json` — plugin config entry for `react-native-android-widget` with both widget declarations, preview images, and 30-minute `updatePeriodMillis`.
+- `package.json` — `main` flipped from `expo-router/entry` to `index.ts`.
+- `src/utils/toolkit/recents.ts` — `addRecent / removeRecent / clearRecents` now fire-and-forget `syncWidgetRecents()` so every toolkit action instantly flows into the widget.
+- `app/_layout.tsx` — on Android, pushes a fresh widget snapshot whenever auth state changes (so a new account doesn't inherit the previous user's recents).
+- `app/pdf-toolkit/reader.tsx` — accepts `?widgetId=…` query, resolves it via `openWidgetRecent()` to the cached PDF URI.
+- `app/image-toolkit/view.tsx` — same widget-deep-link resolver for images.
+- `app/(main)/profile.tsx` — Android-only "Add Home Screen Widget" row under Preferences → calls `requestPinWidget` with a friendly fallback toast for launchers that don't support auto-pin.
+- `assets/images/widget-preview-{quick,recents}.png` — placeholder preview images (copies of the app icon) referenced by the plugin config so the picker shows a tile instead of a blank card.
+
+### Why dynamic imports for `react-native-android-widget`
+The library's JS entry calls into a TurboModule that doesn't exist on web / iOS. Static top-level imports would break the Metro web bundle and the iOS build. All call sites either (a) live under `Platform.OS === "android"` guards or (b) `await import(…)` lazily, so the native dep is tree-shaken out of other platforms.
+
+### Native build note
+This feature **requires a dev or production build** — widgets cannot run inside Expo Go. The config plugin runs during `expo prebuild` and injects the widget provider XML, receivers, and preview assets into the generated `android/` folder. Users testing locally need to re-run `yarn expo prebuild --clean` before `yarn android`.
+
+### Verification
+- Metro web bundle: `✅ No issues found` lint pass across the new files and all modified screens.
+- Web preview boots cleanly, Profile screen hides the Android-only row (checked by Platform.OS gate).
+- Entry file guard: Platform check means iOS/web bundles never resolve the widget task handler module.

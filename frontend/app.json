@@ -69,12 +69,36 @@
             "BROWSABLE"
           ],
           "data": [
-            { "scheme": "content", "host": "*", "pathPattern": ".*\\.pdf" },
-            { "scheme": "content", "host": "*", "pathPattern": ".*\\.docx" },
-            { "scheme": "content", "host": "*", "pathPattern": ".*\\.doc" },
-            { "scheme": "file", "host": "*", "pathPattern": ".*\\.pdf" },
-            { "scheme": "file", "host": "*", "pathPattern": ".*\\.docx" },
-            { "scheme": "file", "host": "*", "pathPattern": ".*\\.doc" }
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.pdf"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.docx"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.doc"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.pdf"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.docx"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.doc"
+            }
           ]
         },
         {
@@ -83,10 +107,18 @@
             "DEFAULT"
           ],
           "data": [
-            { "mimeType": "application/pdf" },
-            { "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
-            { "mimeType": "application/msword" },
-            { "mimeType": "image/*" }
+            {
+              "mimeType": "application/pdf"
+            },
+            {
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            {
+              "mimeType": "application/msword"
+            },
+            {
+              "mimeType": "image/*"
+            }
           ]
         },
         {
@@ -95,10 +127,18 @@
             "DEFAULT"
           ],
           "data": [
-            { "mimeType": "application/pdf" },
-            { "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
-            { "mimeType": "application/msword" },
-            { "mimeType": "image/*" }
+            {
+              "mimeType": "application/pdf"
+            },
+            {
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            {
+              "mimeType": "application/msword"
+            },
+            {
+              "mimeType": "image/*"
+            }
           ]
         }
       ],
@@ -182,7 +222,40 @@
       "@react-native-google-signin/google-signin",
       "./plugins/withCodegenCMakeFix.js",
       "./plugins/withFastGradleProperties.js",
-      "react-native-blob-util"
+      "react-native-blob-util",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "DailyHubQuickActions",
+              "label": "DailyHub Quick Actions",
+              "description": "One-tap access to PDF scan, AI chat, notes & QR scanner.",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 1,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/images/widget-preview-quick.png"
+            },
+            {
+              "name": "DailyHubRecents",
+              "label": "DailyHub Recent Files",
+              "description": "Jump back into your latest PDFs and scans.",
+              "minWidth": "250dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/images/widget-preview-recents.png"
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

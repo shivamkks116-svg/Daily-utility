@@ -11,6 +11,7 @@ import {
   Share,
   Linking,
   Alert,
+  Platform,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +20,7 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { usePremiumEnabled } from "@/src/features/flags";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { getAppVersionLabel } from "@/src/utils/appVersion";
+import { applyThemeAndReload } from "@/src/theme/apply";
 import {
   ThemeMode,
   LanguageCode,
@@ -131,9 +133,16 @@ export default function ProfileScreen() {
 
   async function chooseTheme(v: ThemeMode) {
     setThemeMode(v);
-    await setTheme(v);
     setThemeModal(false);
-    showToast(`Theme: ${THEME_LABELS[v]}`);
+    showToast(`Theme: ${THEME_LABELS[v]} · reloading…`);
+    // Persist, flip the native color-scheme override, and reload the
+    // JS runtime so every StyleSheet rebuilds with the chosen palette.
+    try {
+      await applyThemeAndReload(v);
+    } catch {
+      // If reload fails the pref is still saved — it'll apply on the
+      // next cold launch via the bootstrap hook in `_layout.tsx`.
+    }
   }
 
   async function chooseLanguage(v: LanguageCode) {
@@ -381,6 +390,26 @@ export default function ProfileScreen() {
             onValueChange={toggleAppLock}
             testID="row-app-lock"
           />
+          {Platform.OS === "android" ? (
+            <Row
+              icon="apps-outline"
+              label="Add Home Screen Widget"
+              testID="row-add-widget"
+              onPress={async () => {
+                try {
+                  const { requestPinQuickActions } = await import("@/src/widgets/sync");
+                  const ok = await requestPinQuickActions();
+                  showToast(
+                    ok
+                      ? "Follow the launcher prompt to pin the widget."
+                      : "Your launcher doesn't support auto-pin. Long-press the home screen → Widgets → DailyHub AI.",
+                  );
+                } catch {
+                  showToast("Long-press your home screen → Widgets → DailyHub AI.");
+                }
+              }}
+            />
+          ) : null}
         </Section>
 
         <Section title="Sync & Storage">
