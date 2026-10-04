@@ -24,21 +24,54 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
-# ---------------------- Firebase Admin (no service account needed for verify) ----------------------
+# ---------------------- Firebase ID token verification ----------------------
+#
+# We intentionally DO NOT use `firebase_admin.verify_id_token()` because it
+# requires Application Default Credentials (ADC) or a service-account JSON on
+# the deployed container — a hard requirement that broke sign-in in prod with
+# "Your default credentials were not found".
+#
+# Instead we verify Firebase ID tokens directly via `google.oauth2.id_token`
+# which only needs the project ID. Internally it fetches Google's public JWKS
+# over plain HTTPS, verifies the JWT signature, and asserts:
+#   • audience == FIREBASE_PROJECT_ID
+#   • issuer   == https://securetoken.google.com/<FIREBASE_PROJECT_ID>
+# This is the same verification firebase-admin runs — just without the ADC
+# dependency.
 FIREBASE_PROJECT_ID = os.environ.get('FIREBASE_PROJECT_ID', '')
 FIREBASE_WEB_API_KEY = os.environ.get('FIREBASE_WEB_API_KEY', '')
+_FB_READY = bool(FIREBASE_PROJECT_ID)
 
 try:
-    import firebase_admin
-    from firebase_admin import auth as _fb_auth, credentials as _fb_credentials
-    if not firebase_admin._apps:
-        # verify_id_token only needs projectId; no service-account required.
-        firebase_admin.initialize_app(options={'projectId': FIREBASE_PROJECT_ID} if FIREBASE_PROJECT_ID else None)
-    _FB_READY = bool(FIREBASE_PROJECT_ID)
+    from google.oauth2 import id_token as _goog_id_token  # type: ignore
+    from google.auth.transport import requests as _goog_requests  # type: ignore
+    _goog_request = _goog_requests.Request()
 except Exception as _e:  # noqa
+    _goog_id_token = None  # type: ignore
+    _goog_request = None  # type: ignore
     _FB_READY = False
-    _fb_auth = None
-    logging.getLogger('dailyhub').warning('firebase-admin init failed: %s', _e)
+    logging.getLogger('dailyhub').warning('google-auth init failed: %s', _e)
+
+
+def _verify_firebase_id_token(token: str) -> Dict[str, Any]:
+    """Verify a Firebase ID token and return its decoded claims.
+
+    Raises ValueError on invalid / expired / wrong-audience tokens — the
+    `/auth/firebase` endpoint catches that and surfaces the exact reason.
+    """
+    if not _FB_READY or _goog_id_token is None or _goog_request is None:
+        raise RuntimeError("Firebase verification not configured")
+    expected_issuer = f"https://securetoken.google.com/{FIREBASE_PROJECT_ID}"
+    claims = _goog_id_token.verify_firebase_token(
+        token,
+        _goog_request,
+        audience=FIREBASE_PROJECT_ID,
+    )
+    if claims.get("iss") != expected_issuer:
+        raise ValueError(
+            f"issuer mismatch: expected {expected_issuer}, got {claims.get('iss')}"
+        )
+    return claims
 
 app = FastAPI(title="DailyHub AI API")
 api_router = APIRouter(prefix="/api")
@@ -275,7 +308,10 @@ async def auth_guest(payload: GuestLoginIn):
 
 # -------- Firebase Auth (Google, Email/Password) --------
 class FirebaseAuthIn(BaseModel):
-    id_token: str
+    # Optional at the schema layer so a missing/empty value is handled by the
+    # endpoint itself (returns a clean 400 "id_token required") instead of
+    # Pydantic's generic 422 validation error.
+    id_token: Optional[str] = None
     provider: Optional[str] = None  # "google" | "password" (hint, not trusted)
 
 
@@ -297,9 +333,7 @@ async def auth_firebase(payload: FirebaseAuthIn):
     """Verify a Firebase ID token, upsert the user, and return the app's own
     session_token. Preserves existing user_id when email already exists so
     downstream data (notes, todos, RevenueCat) keeps working."""
-    if not _FB_READY or _fb_auth is None:
-        # Make the deployment-time misconfiguration super explicit so users don't
-        # see a generic "Unauthorized" and get stuck.
+    if not _FB_READY:
         if not FIREBASE_PROJECT_ID:
             raise HTTPException(
                 status_code=503,
@@ -309,19 +343,15 @@ async def auth_firebase(payload: FirebaseAuthIn):
                     "(e.g. 'daily-hub-2077d')."
                 ),
             )
-        raise HTTPException(status_code=503, detail="Firebase Admin not configured on server")
+        raise HTTPException(status_code=503, detail="Firebase verification not configured on server")
 
     token = (payload.id_token or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="id_token required")
 
     try:
-        decoded = _fb_auth.verify_id_token(token, check_revoked=False)
+        decoded = _verify_firebase_id_token(token)
     except Exception as e:
-        # Return a *specific* reason so the client can show it on screen.
-        # Firebase Admin raises typed exceptions whose message tells us exactly
-        # what's wrong: wrong audience (projectId mismatch), expired token,
-        # revoked session, bad signature (keys not loaded), etc.
         reason = str(e)[:200] or e.__class__.__name__
         logger.warning("firebase verify_id_token failed: %s", reason)
         raise HTTPException(
@@ -1991,20 +2021,21 @@ async def on_startup():
     except Exception:
         logger.exception("Index creation issue")
 
-    # Pre-warm Firebase Admin — fetch Google's public token-verification keys
-    # at startup so the *first* real sign-in doesn't eat 3-8 s of cold latency.
-    if _FB_READY and _fb_auth is not None:
+    # Pre-warm Firebase ID-token verification — fetch Google's public JWKS at
+    # startup so the *first* real sign-in doesn't eat 3-8 s of cold latency.
+    if _FB_READY and _goog_id_token is not None:
         try:
             import asyncio
             def _warm():
                 try:
-                    # verify_id_token("") raises immediately but still triggers
-                    # the public-key fetch + caching inside google.auth.
-                    _fb_auth.verify_id_token("warm")  # type: ignore
+                    # Any syntactically-invalid token forces google-auth to fetch
+                    # and cache the Firebase JWK set before raising. We only
+                    # care about the side-effect, not the result.
+                    _verify_firebase_id_token("warm")
                 except Exception:
                     pass
             await asyncio.get_event_loop().run_in_executor(None, _warm)
-            logger.info("Firebase Admin pre-warmed.")
+            logger.info("Firebase JWKS pre-warmed.")
         except Exception as e:
             logger.warning("Firebase pre-warm skipped: %s", e)
 

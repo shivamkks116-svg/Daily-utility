@@ -1,0 +1,32 @@
+{
+  "summary": "Backend verification of POST /api/auth/firebase after switch from firebase_admin.verify_id_token to google.oauth2.id_token.verify_firebase_token. All 6 specified cases pass. ADC error completely eliminated from backend logs. Pre-warm log 'Firebase JWKS pre-warmed.' confirmed present on startup. One small spec-alignment fix applied: FirebaseAuthIn.id_token made Optional so missing body returns 400 (handler-driven) instead of Pydantic's 422.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_firebase.py",
+    "/app/test_reports/pytest/test_auth_firebase.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 2043 lines — exceeds the 700-line guideline; consider splitting into modules (auth, ai, documents, etc.). Not blocking this iteration.",
+    "Firebase verification path is now ADC-free and correctly uses google-auth's verify_firebase_token; good separation and clear error surfacing via 'Firebase token rejected: <reason>'."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (FirebaseAuthIn.id_token: str -> Optional[str] = None so handler returns clean 400 'id_token required' per spec instead of Pydantic 422)",
+    "/app/backend/tests/test_auth_firebase.py (new pytest suite covering all 6 review cases)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "N/A - backend only"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Firebase auth entry point /api/auth/firebase is now ADC-free via google.oauth2.id_token.verify_firebase_token. Negative-path tests live in /app/backend/tests/test_auth_firebase.py. For positive-path (valid Firebase ID token) testing, a real token minted by the Firebase client (web/mobile sign-in) is required — none can be generated server-side without a service account. Project ID: FIREBASE_PROJECT_ID env var; expected issuer: https://securetoken.google.com/<project_id>.",
+  "rca_of_issue": "Case 1 (POST {}) originally returned 422 instead of expected 400 because FirebaseAuthIn declared id_token as a required str, so Pydantic rejected the request before the endpoint's own 'id_token required' check could run. Fix: id_token is now Optional[str] = None; the endpoint explicitly validates emptiness and raises HTTPException(400, 'id_token required'). After the fix all 6 cases pass and the behavior exactly matches the review spec."
+}

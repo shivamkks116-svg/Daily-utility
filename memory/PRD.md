@@ -789,3 +789,41 @@ If users still see "Unauthorized" or anything about `FIREBASE_PROJECT_ID` after 
 FIREBASE_PROJECT_ID=daily-hub-2077d
 FIREBASE_WEB_API_KEY=<key from google-services.json>
 ```
+
+## v8.5 — Firebase sign-in: ADC-free verification (Oct 2026)
+
+### User report (follow-up to v8.4)
+Login screen (with v8.4 detail propagation) now showed the real reason:
+> "Firebase token rejected: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc"
+
+### Root cause
+`firebase_admin.verify_id_token()` internally resolves `app.credential` — on a plain deployed container with no service-account JSON and no Compute Engine metadata server, `google.auth.default()` fails. The earlier comment "no service-account needed for verify" was wrong; firebase-admin always needs *some* credential to initialize.
+
+### Fix — bypass firebase-admin for verification
+Switched the verify path to **`google.oauth2.id_token.verify_firebase_token`** which only needs the Firebase project ID and uses a plain HTTPS `Request()` to fetch Google's public JWKS. Same JWT verification (signature + audience + issuer) that firebase-admin does — minus the ADC dependency.
+
+Also:
+- Added an explicit issuer check (`https://securetoken.google.com/<projectId>`) to match firebase-admin's behaviour exactly.
+- Updated the pre-warm step to call `_verify_firebase_id_token("warm")` so the JWK set is cached at startup.
+- `FirebaseAuthIn.id_token` → `Optional[str] = None` so an empty body returns the handler's own 400 "id_token required" instead of Pydantic's 422.
+
+### Verified (iteration 25 — 6/6 pass)
+- Missing / empty token → 400 "id_token required".
+- Garbage token → 401 "Firebase token rejected: Wrong number of segments in token" (NOT the ADC error anymore).
+- `"Firebase JWKS pre-warmed."` present in startup logs.
+- Zero mentions of `"default credentials were not found"` in logs. ✓
+
+### Files changed
+- `backend/server.py`:
+  - Removed the `firebase_admin.initialize_app()` block.
+  - Added `_verify_firebase_id_token()` helper using `google.oauth2.id_token` + `google.auth.transport.requests.Request()`.
+  - `/auth/firebase` now routes verification through the helper.
+  - `FirebaseAuthIn.id_token` typed as `Optional[str] = None`.
+  - Startup pre-warm calls `_verify_firebase_id_token("warm")` in a thread.
+
+### Deployment
+No new backend dependency — `google-auth` was already a transitive dep of `firebase-admin`. Rebuild / redeploy to pick up the fix:
+1. Emergent **Publish** button.
+2. Backend container restart happens automatically.
+3. Generate new Android APK (frontend v8.4 detail-propagation change is needed too).
+4. User will now sign in successfully — the deployed backend only needs `FIREBASE_PROJECT_ID` env, nothing else.
