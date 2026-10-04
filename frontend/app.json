@@ -181,6 +181,7 @@
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
       "./plugins/withCodegenCMakeFix.js",
+      "./plugins/withFastGradleProperties.js",
       "react-native-blob-util"
     ],
     "experiments": {
