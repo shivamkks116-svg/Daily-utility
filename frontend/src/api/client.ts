@@ -121,7 +121,22 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
       await setToken(null);
       await setProvider(null);
     }
-    throw new Error("Unauthorized");
+    // Surface the server's `detail` message when present (e.g. for
+    // /auth/firebase we return a specific reason like "projectId mismatch"
+    // instead of a generic "Unauthorized"). Keeps the login screen actionable.
+    let detail: string | null = null;
+    try {
+      const txt = await res.clone().text();
+      const parsed = txt ? JSON.parse(txt) : null;
+      const d = parsed?.detail;
+      if (typeof d === "string") detail = d;
+      else if (d && typeof d === "object") detail = d.message || d.error || null;
+    } catch {
+      // ignore JSON parse errors — fall through to the generic label
+    }
+    const err = new Error(detail || "Unauthorized") as Error & { status?: number };
+    err.status = 401;
+    throw err;
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};

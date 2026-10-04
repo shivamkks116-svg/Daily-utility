@@ -757,3 +757,35 @@ Setting an app as default handler for a file type is entirely an OS/user decisio
 - Pick any modern `.docx` in **Word Reader** → text appears instantly, no network traffic.
 - Pick a legacy `.doc` → still works, hits backend fallback.
 - Open **Word → PDF** → hit Convert → InstantOverlay appears over the screen, PDF Reader opens as soon as backend responds.
+
+## v8.4 — Google Sign-In: diagnostics + pre-warm (Oct 2026)
+
+### User report
+- "Google sign-in Unauthorized aa raha hai" — screenshot showed only "Unauthorized" text on landing screen, no actionable detail.
+- "Bahut late sign up ho raha hai" — first signup took several seconds while Firebase Admin fetched Google's public keys cold.
+
+### Root cause
+1. Backend `/api/auth/firebase` returned the string `"Invalid or expired Firebase token"` for *every* verify failure, so the real cause (projectId mismatch, missing env var, clock skew, invalid token) stayed hidden.
+2. Frontend `api()` client swallowed the server's `detail` field for 401 responses and threw a hard-coded `new Error("Unauthorized")`, so the screen could only say "Unauthorized".
+3. Firebase Admin cold-start: the first `verify_id_token` call synchronously fetches https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com → 3-8 s on the user's connection.
+
+### Fix
+- **`backend/server.py`**
+  - When `FIREBASE_PROJECT_ID` env variable is missing, `/auth/firebase` now returns a 503 with the exact remedy ("Server missing FIREBASE_PROJECT_ID…") instead of a generic 503.
+  - `verify_id_token` failures return a 401 with the real exception message (`"Firebase token rejected: <reason>"`, truncated to 200 chars) so the login screen can show it directly.
+  - Added **pre-warm step** on startup: a dummy `verify_id_token("warm")` call runs in an executor, forcing google-auth to cache Google's public JWK set. Shaves ~5 s off the first user sign-in. Took ~42 s on first boot; successive sign-ins are instant.
+- **`frontend/src/api/client.ts`**
+  - 401 responses now parse the server's `detail` field and re-throw `new Error(detail || "Unauthorized")` with the status code attached. AuthContext's 401 → log-out branch still fires because it checks `err.status === 401`.
+
+### Verify
+- Trigger `/auth/firebase` with an empty token → 400 "id_token required" (unchanged).
+- Trigger with a garbage token → 401 "Firebase token rejected: Wrong number of segments…" (previously just "Unauthorized").
+- Deployed container missing `FIREBASE_PROJECT_ID` env → login screen now shows the exact fix.
+- Startup logs: `Firebase Admin pre-warmed.` within 60 s of boot.
+
+### Deployment note
+If users still see "Unauthorized" or anything about `FIREBASE_PROJECT_ID` after the next redeploy, the deployed backend's `.env` is missing the Firebase keys. Add on the Emergent deployment panel:
+```
+FIREBASE_PROJECT_ID=daily-hub-2077d
+FIREBASE_WEB_API_KEY=<key from google-services.json>
+```

@@ -298,6 +298,17 @@ async def auth_firebase(payload: FirebaseAuthIn):
     session_token. Preserves existing user_id when email already exists so
     downstream data (notes, todos, RevenueCat) keeps working."""
     if not _FB_READY or _fb_auth is None:
+        # Make the deployment-time misconfiguration super explicit so users don't
+        # see a generic "Unauthorized" and get stuck.
+        if not FIREBASE_PROJECT_ID:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Server missing FIREBASE_PROJECT_ID. The deployed backend .env "
+                    "needs FIREBASE_PROJECT_ID set to the Firebase project ID "
+                    "(e.g. 'daily-hub-2077d')."
+                ),
+            )
         raise HTTPException(status_code=503, detail="Firebase Admin not configured on server")
 
     token = (payload.id_token or "").strip()
@@ -307,8 +318,16 @@ async def auth_firebase(payload: FirebaseAuthIn):
     try:
         decoded = _fb_auth.verify_id_token(token, check_revoked=False)
     except Exception as e:
-        logger.warning("firebase verify_id_token failed: %s", e)
-        raise HTTPException(status_code=401, detail="Invalid or expired Firebase token") from e
+        # Return a *specific* reason so the client can show it on screen.
+        # Firebase Admin raises typed exceptions whose message tells us exactly
+        # what's wrong: wrong audience (projectId mismatch), expired token,
+        # revoked session, bad signature (keys not loaded), etc.
+        reason = str(e)[:200] or e.__class__.__name__
+        logger.warning("firebase verify_id_token failed: %s", reason)
+        raise HTTPException(
+            status_code=401,
+            detail=f"Firebase token rejected: {reason}",
+        ) from e
 
     # Extract identity
     firebase_uid = decoded.get("uid") or decoded.get("user_id")
@@ -1971,6 +1990,23 @@ async def on_startup():
         logger.info("Indexes ensured.")
     except Exception:
         logger.exception("Index creation issue")
+
+    # Pre-warm Firebase Admin — fetch Google's public token-verification keys
+    # at startup so the *first* real sign-in doesn't eat 3-8 s of cold latency.
+    if _FB_READY and _fb_auth is not None:
+        try:
+            import asyncio
+            def _warm():
+                try:
+                    # verify_id_token("") raises immediately but still triggers
+                    # the public-key fetch + caching inside google.auth.
+                    _fb_auth.verify_id_token("warm")  # type: ignore
+                except Exception:
+                    pass
+            await asyncio.get_event_loop().run_in_executor(None, _warm)
+            logger.info("Firebase Admin pre-warmed.")
+        except Exception as e:
+            logger.warning("Firebase pre-warm skipped: %s", e)
 
 
 @app.on_event("shutdown")
