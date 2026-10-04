@@ -126,6 +126,62 @@ async def require_user(authorization: Optional[str]) -> dict:
     return user
 
 
+# ---------------------- Admin + feature flags ----------------------
+# ADMIN_EMAILS is a comma-separated allow-list in the backend .env.
+# Users whose email matches this list unlock the `/api/admin/*` endpoints.
+ADMIN_EMAILS = {
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+}
+
+
+async def require_admin(authorization: Optional[str]) -> dict:
+    user = await require_user(authorization)
+    email = (user.get("email") or "").lower()
+    if not ADMIN_EMAILS or email not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+# Default feature-flag values. Keeping Premium OFF by default so the surface
+# never leaks before the user flips it on from the admin panel.
+_DEFAULT_FLAGS: Dict[str, Any] = {
+    "premium_enabled": False,
+}
+
+
+async def _get_flags() -> Dict[str, Any]:
+    """Load every feature flag merged on top of the defaults."""
+    out = dict(_DEFAULT_FLAGS)
+    try:
+        async for doc in db.app_config.find({"_type": "flag"}, {"_id": 0}):
+            key = doc.get("key")
+            if key:
+                out[key] = doc.get("value")
+    except Exception:
+        logger.exception("app_config read failed")
+    return out
+
+
+async def _set_flag(key: str, value: Any, actor: Optional[dict] = None) -> Dict[str, Any]:
+    """Upsert a feature flag and return the stored document (sans _id)."""
+    now = utcnow()
+    doc = {
+        "_type": "flag",
+        "key": key,
+        "value": value,
+        "updated_at": now,
+        "updated_by": (actor or {}).get("email") or (actor or {}).get("user_id"),
+    }
+    await db.app_config.update_one(
+        {"_type": "flag", "key": key},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
 # ---------------------- Models ----------------------
 class SessionExchangeIn(BaseModel):
     session_id: str
@@ -429,6 +485,93 @@ async def auth_logout(authorization: Optional[str] = Header(default=None)):
         token = authorization.split(" ", 1)[1].strip()
         await db.user_sessions.delete_one({"session_token": token})
     return {"ok": True}
+
+
+# ---------------------- Config + Admin ----------------------
+@api_router.get("/config/public")
+async def get_public_config():
+    """Public feature flags fetched by every client at startup.
+
+    Deliberately unauthenticated so the login screen itself can gate the
+    "Go Premium" promo card. Only returns flags that are safe to expose.
+    """
+    flags = await _get_flags()
+    return {
+        "premium_enabled": bool(flags.get("premium_enabled", False)),
+    }
+
+
+@api_router.get("/admin/config")
+async def admin_get_config(authorization: Optional[str] = Header(default=None)):
+    """Full feature-flag dump for the admin panel. Admin-only."""
+    await require_admin(authorization)
+    flags = await _get_flags()
+    # Pull update metadata so the admin UI can show "last changed".
+    meta: Dict[str, Any] = {}
+    try:
+        async for doc in db.app_config.find({"_type": "flag"}, {"_id": 0}):
+            meta[doc.get("key")] = {
+                "updated_at": doc.get("updated_at"),
+                "updated_by": doc.get("updated_by"),
+            }
+    except Exception:
+        logger.exception("admin_get_config read failed")
+    return {"flags": flags, "meta": meta}
+
+
+class PremiumToggleIn(BaseModel):
+    enabled: bool
+
+
+@api_router.post("/admin/config/premium")
+async def admin_toggle_premium(
+    payload: PremiumToggleIn,
+    authorization: Optional[str] = Header(default=None),
+):
+    """Flip the Premium surface on/off for every user. Admin-only."""
+    actor = await require_admin(authorization)
+    doc = await _set_flag("premium_enabled", bool(payload.enabled), actor=actor)
+    return {
+        "ok": True,
+        "key": doc["key"],
+        "value": doc["value"],
+        "updated_at": doc["updated_at"],
+        "updated_by": doc["updated_by"],
+    }
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(authorization: Optional[str] = Header(default=None)):
+    """Lightweight admin dashboard numbers. Admin-only."""
+    await require_admin(authorization)
+    total_users = await db.users.count_documents({})
+    guest_users = await db.users.count_documents({"is_guest": True})
+    # Real premium state lives in the dedicated `premium` collection — each
+    # entitlement doc flips `premium: true` when a subscription is active.
+    premium_users = 0
+    try:
+        premium_users = await db.premium.count_documents({"premium": True})
+    except Exception:
+        pass
+    # Active-in-30-days: sessions have `created_at` + an `expires_at` far in
+    # the future. A fresh login touches `created_at`, so count sessions
+    # created in the last 30 days.
+    active_30d = 0
+    try:
+        cutoff = utcnow() - timedelta(days=30)
+        active_30d = await db.user_sessions.count_documents({
+            "created_at": {"$gte": cutoff}
+        })
+    except Exception:
+        pass
+    return {
+        "users": {
+            "total": total_users,
+            "guests": guest_users,
+            "premium": premium_users,
+            "active_30d": active_30d,
+        },
+    }
 
 
 # ---------------------- Notes ----------------------

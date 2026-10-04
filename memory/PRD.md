@@ -827,3 +827,45 @@ No new backend dependency — `google-auth` was already a transitive dep of `fir
 2. Backend container restart happens automatically.
 3. Generate new Android APK (frontend v8.4 detail-propagation change is needed too).
 4. User will now sign in successfully — the deployed backend only needs `FIREBASE_PROJECT_ID` env, nothing else.
+
+## v8.6 — Feature-flag system + Admin panel (Oct 2026)
+
+### User request
+Hide Premium surface until RevenueCat + Play billing is live, and give the owner an in-app admin panel to flip it back on later without a rebuild.
+
+### Backend
+- `ADMIN_EMAILS` env (comma-separated) acts as the admin allow-list.
+- New helper `require_admin()` builds on `require_user()` and 403s anyone whose email isn't in the list.
+- MongoDB `app_config` collection stores feature flags as `{_type:"flag", key, value, updated_at, updated_by}`.
+- New endpoints:
+  - `GET /api/config/public` → `{premium_enabled: bool}` (unauthenticated, called by every client at startup).
+  - `GET /api/admin/config` → full flag dump + metadata, admin only.
+  - `POST /api/admin/config/premium` body `{enabled}` → toggle, admin only.
+  - `GET /api/admin/stats` → `{users: {total, guests, premium, active_30d}}`, admin only.
+- Fixed `premium` count to query `db.premium` instead of a non-existent `users.premium_status` field, and `active_30d` to use `user_sessions.created_at` (last_seen was never written).
+- Default value for `premium_enabled` is `false` so Premium stays hidden until the admin flips it.
+
+### Frontend
+- `src/features/flags.tsx` — new `FeatureFlagsProvider` + `useFeatureFlags()` / `usePremiumEnabled()` hooks. Fetches `/config/public` at startup, hydrates from AsyncStorage cache for instant cold-start UI.
+- Mounted in `app/_layout.tsx` above `InnerLayout` so every screen can read the flag.
+- `app/(main)/home.tsx` — "Go Premium" promo card now gated behind `premiumEnabled && !isSubscribed`.
+- `app/(main)/profile.tsx` — Premium card hidden when flag is off, and a new "Admin" section ("Admin panel · Feature flags · metrics") appears only after a silent probe of `/admin/config` returns 200. Non-admins never see the row.
+- `app/premium/index.tsx` — if the flag is off, auto-redirects to Home so a stale deep link / cached nav can't surface Premium.
+- `app/admin/index.tsx` — new admin screen with:
+  - Live stats cards (Total · Guests · Premium · 30d-active).
+  - Premium toggle switch with "last changed" metadata.
+  - Pull-to-refresh.
+  - 403 fallback showing "Admin only" + Back to Home button for curious non-admins.
+
+### Verified
+- Backend: `test_admin_feature_flags.py` → **13/13 pass** (public default false, non-admin 403, admin flip reflects in public endpoint, 422 on malformed body, empty allow-list blocks even configured email, cleanup OK). Report in `iteration_26.json`.
+- Web preview: `/admin` without auth → "Admin only" lock screen with Back button ✓; `/(main)/home` → zero Premium references ✓.
+
+### How to actually turn Premium on later
+1. Add admin email to backend `.env`:
+   ```
+   ADMIN_EMAILS=your-google-email@gmail.com
+   ```
+2. Redeploy backend (Emergent Publish).
+3. Sign in with that account → open Profile → tap **Admin panel** → flip the Premium switch to ON.
+4. Every logged-in user picks up the change on the next launch (or immediately on refresh via the admin panel's `refreshFlags()`).

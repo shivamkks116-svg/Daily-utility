@@ -1,0 +1,40 @@
+{
+  "summary": "Verified all four new admin + feature-flag endpoints end-to-end (GET /api/config/public, GET /api/admin/config, POST /api/admin/config/premium, GET /api/admin/stats). 13/13 pytest cases pass (serial via -n 0). Covered: unauthenticated public read (default false), non-admin 403 on all admin endpoints, missing-token 401, empty-ADMIN_EMAILS still blocks seeded admin email, admin success flow (shape of /admin/config, toggle on→reflects in /config/public, toggle off→restores, /admin/stats returns {total,guests,premium,active_30d} ints), and Pydantic 422 validation (empty body, missing `enabled` key). Backend .env restored to ADMIN_EMAILS= (empty), backend restarted, all seed data removed. One LOW-severity code-review observation on /api/admin/stats premium count (see below) — endpoint still returns 200 and matches the documented schema.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/admin/stats",
+        "issue": "`premium_users` is computed from `db.users.count_documents({'premium_status': {'$ne': None}})`. In MongoDB, `$ne: null` ALSO matches documents where the field is missing, so this counts every user as premium (field `premium_status` is never written anywhere in server.py — only `db.premium` collection stores premium state). Suggested fix: either `db.premium.count_documents({'premium': True})` or `db.users.count_documents({'premium_status': {'$exists': True, '$ne': None}})`."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_feature_flags.py",
+    "/app/test_reports/pytest/admin_feature_flags.xml"
+  ],
+  "action_items": [
+    "(Optional, LOW) Fix /api/admin/stats premium count — current query matches all users because `$ne: null` includes missing fields. Switch to counting from `db.premium` (where premium=True) for an accurate dashboard number.",
+    "No other actions required; all admin/flag endpoints behave per spec."
+  ],
+  "critical_code_review_comments": [
+    "ADMIN_EMAILS is loaded once at module import (server.py:132). Any change to the .env requires `supervisorctl restart backend` — this is already consistent with the review request's test flow and documented in the test fixture.",
+    "server.py has grown to >1700 lines — consider splitting into routers (auth, notes, todos, admin, pdf, ai) for maintainability. Not a blocker.",
+    "/api/admin/stats computes `active_30d` from `user_sessions.last_seen`, but no code ever writes `last_seen` on sessions, so this will always be 0. Not blocking the ticket, but worth noting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin_feature_flags.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "N/A (backend-only testing requested)"},
+  "seed_data_creation": "Fixture seeded one TEST admin user (email admin@test.com) + matching user_sessions doc. Both deleted on teardown. Also deletes the `premium_enabled` flag doc from `app_config`. Non-admin flow used /api/auth/guest.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini forces `-n 2 --dist loadscope`. Tests that mutate shared backend state (restart via supervisorctl, env rewrites) MUST run with `-n 0` to serialize — initial run with the default 2 workers caused duplicate-key errors on the admin seed insert and 502 errors when one worker restarted backend while the other was mid-request. Use `python -m pytest <file> -n 0`.",
+  "rca_of_issue": "N/A — no bugs blocked the feature. The only finding is a MongoDB query semantic issue on /api/admin/stats::premium_users (see backend_issues.minor)."
+}

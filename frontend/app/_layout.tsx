@@ -13,6 +13,7 @@ import { colors } from "@/src/theme";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/subscription/RevenueCat";
 import { AdStartup } from "@/src/ads/native";
 import { useSharedIntentHandler } from "@/src/utils/pdf/sharedIntent";
+import { FeatureFlagsProvider } from "@/src/features/flags";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -56,7 +57,9 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
           <AuthProvider>
-            <InnerLayout />
+            <FeatureFlagsProvider>
+              <InnerLayout />
+            </FeatureFlagsProvider>
           </AuthProvider>
         </SafeAreaProvider>
       </KeyboardProvider>

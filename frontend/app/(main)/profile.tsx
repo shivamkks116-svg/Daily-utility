@@ -16,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
+import { usePremiumEnabled } from "@/src/features/flags";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import {
   ThemeMode,
@@ -44,6 +45,7 @@ const FEEDBACK_EMAIL = "feedback@shivaminnovation.dev";
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
+  const premiumEnabled = usePremiumEnabled();
   const router = useRouter();
 
   const [toast, setToast] = useState<string | null>(null);
@@ -60,6 +62,30 @@ export default function ProfileScreen() {
   const [pinFirst, setPinFirst] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [bioAvailable, setBioAvailable] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Silently probe the admin endpoint so we only show the "Admin" row to
+  // users whose email is on the ADMIN_EMAILS allow-list. A non-admin gets a
+  // 403 and we hide the row — no error UI either way.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user || user.is_guest) {
+        setIsAdmin(false);
+        return;
+      }
+      try {
+        const { api } = await import("@/src/api/client");
+        await api("/admin/config", { method: "GET" });
+        if (!cancelled) setIsAdmin(true);
+      } catch {
+        if (!cancelled) setIsAdmin(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -304,24 +330,26 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <View style={styles.premiumCard} testID="premium-card">
-          <View style={styles.premiumIcon}>
-            <Ionicons name="diamond" size={24} color={colors.onBrandPrimary} />
+        {premiumEnabled ? (
+          <View style={styles.premiumCard} testID="premium-card">
+            <View style={styles.premiumIcon}>
+              <Ionicons name="diamond" size={24} color={colors.onBrandPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.premiumTitle}>Go Premium</Text>
+              <Text style={styles.premiumDesc}>
+                No ads, unlimited AI, cloud backup and advanced themes.
+              </Text>
+            </View>
+            <Pressable
+              testID="premium-upgrade-btn"
+              onPress={() => router.push("/premium")}
+              style={styles.premiumBtn}
+            >
+              <Text style={styles.premiumBtnText}>Upgrade</Text>
+            </Pressable>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.premiumTitle}>Go Premium</Text>
-            <Text style={styles.premiumDesc}>
-              No ads, unlimited AI, cloud backup and advanced themes.
-            </Text>
-          </View>
-          <Pressable
-            testID="premium-upgrade-btn"
-            onPress={() => router.push("/premium")}
-            style={styles.premiumBtn}
-          >
-            <Text style={styles.premiumBtnText}>Upgrade</Text>
-          </Pressable>
-        </View>
+        ) : null}
 
         <Section title="Preferences">
           <Row
@@ -435,6 +463,18 @@ export default function ProfileScreen() {
             onPress={() => Linking.openURL("https://shivaminnovation.dev").catch(() => showToast("shivaminnovation.dev"))}
           />
         </Section>
+
+        {isAdmin ? (
+          <Section title="Admin">
+            <Row
+              icon="shield-checkmark-outline"
+              label="Admin panel"
+              value="Feature flags · metrics"
+              testID="row-admin"
+              onPress={() => router.push("/admin")}
+            />
+          </Section>
+        ) : null}
 
         <Pressable
           testID="logout-button"

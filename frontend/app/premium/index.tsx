@@ -22,6 +22,7 @@ import {
   rcNativeAvailable,
   REVENUECAT_ENTITLEMENT_IDENTIFIER,
 } from "@/src/subscription/RevenueCat";
+import { useFeatureFlags } from "@/src/features/flags";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -170,8 +171,22 @@ export default function PremiumScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const sub = useSubscription();
+  const { flags, loading: flagsLoading } = useFeatureFlags();
   const [selected, setSelected] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  // Guard — if the admin has flipped Premium OFF, bounce back to Home.
+  // We wait for the first flag fetch to resolve so a slow network doesn't
+  // momentarily hide a legitimately-enabled Premium screen.
+  React.useEffect(() => {
+    if (!flagsLoading && !flags.premium_enabled) {
+      router.replace("/(main)/home");
+    }
+  }, [flagsLoading, flags.premium_enabled, router]);
+
+  if (!flagsLoading && !flags.premium_enabled) {
+    return null; // bounce in-flight
+  }
 
   const cards = useMemo(() => {
     const list = sub.packages || [];

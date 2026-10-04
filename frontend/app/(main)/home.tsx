@@ -13,6 +13,7 @@ import { storage } from "@/src/utils/storage";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { AdBanner } from "@/src/ads/AdBanner";
 import { useSubscription } from "@/src/subscription/RevenueCat";
+import { usePremiumEnabled } from "@/src/features/flags";
 import { listRecents, type RecentEntry, formatBytes } from "@/src/utils/toolkit/recents";
 
 const HERO_BG =
@@ -87,6 +88,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { isSubscribed } = useSubscription();
+  const premiumEnabled = usePremiumEnabled();
   const router = useRouter();
   const firstName = useMemo(() => (user?.name || "there").split(" ")[0], [user]);
   const today = useMemo(
@@ -369,8 +371,8 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Premium promo — only shown when user is NOT subscribed */}
-        {!isSubscribed ? (
+        {/* Premium promo — only shown when the flag is ON and the user is NOT already subscribed. */}
+        {premiumEnabled && !isSubscribed ? (
           <View style={styles.section}>
             <Pressable
               testID="home-premium-cta"
