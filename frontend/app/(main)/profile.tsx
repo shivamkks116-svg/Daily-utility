@@ -18,6 +18,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { usePremiumEnabled } from "@/src/features/flags";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { getAppVersionLabel } from "@/src/utils/appVersion";
 import {
   ThemeMode,
   LanguageCode,
@@ -454,7 +455,7 @@ export default function ProfileScreen() {
         </Section>
 
         <Section title="About">
-          <Row icon="information-circle-outline" label="Version" value="1.0.0" testID="row-version" />
+          <Row icon="information-circle-outline" label="Version" value={getAppVersionLabel()} testID="row-version" />
           <Row
             icon="business-outline"
             label="Developer"

@@ -900,3 +900,31 @@ Hide Premium surface until RevenueCat + Play billing is live, and give the owner
 3. Profile → **Admin panel** (row only visible to admins).
 4. Tap **Preview Premium page** → `/premium?admin=1` opens with the preview banner.
 5. Verify copy, pricing, CTA, FAQs — then flip the main toggle ON when you're ready to launch.
+
+## v8.8 — Auto-sync app version in Profile (Oct 2026)
+
+### User request
+"Version jo app mein hai woh auto-sync hona chahiye update ke saath. Abhi version 1.0.2 hai, next ke liye bhi automatic ho." — Profile → Version was hard-coded to "1.0.0".
+
+### Fix
+- **`src/utils/appVersion.ts`** (new) — single source of truth for the app's display version.
+  - Preference order: `expo-application` (native build string) → `Constants.expoConfig?.version` (expo-constants) → "1.0.0" fallback.
+  - `getAppVersionLabel()` returns `"1.0.2 (4)"` on Android (version + versionCode), `"1.0.2"` on web / where the build code isn't available.
+- **`app/(main)/profile.tsx`** — swapped the hard-coded `"1.0.0"` for `getAppVersionLabel()`.
+- **`app.json`** — bumped `expo.version` → `"1.0.2"`, Android `versionCode` → `4`.
+- **`expo-application`** package installed (`yarn expo install`).
+
+### How future bumps work
+From now on, bumping Android:
+1. Update `app.json` → `"version": "1.0.3"` and `"versionCode": 5`.
+2. Prebuild + build the APK as usual.
+
+The Profile row updates automatically — no code edit required.
+
+### Metro cache gotcha (resolved)
+`expo-constants` on web inlines `app.json` into the bundle via `process.env.APP_MANIFEST` at babel-transform time. Metro's persistent transform cache (`METRO_CACHE_ROOT=/app/frontend/.metro-cache`, 102 MB) kept the OLD manifest string even after `.expo/` + in-memory restarts. Nuking that directory + restarting Metro picks up the new version. For future app.json edits that need to reflect in web preview, delete `.metro-cache` alongside the usual restart.
+
+### Verified
+- `/(main)/profile` web preview now renders **"Version · 1.0.2"** ✓
+- Bundle inspection: `"version":"1.0.2"` in the inlined manifest ✓
+- Lint clean, Metro clean restart ✓
