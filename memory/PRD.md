@@ -1040,3 +1040,23 @@ Behavior matrix:
 - Metro web bundle: `✅ No issues found` lint across the four touched widget files + `apply.ts`.
 - Web preview loads cleanly (login screen renders, no console errors) — confirming the dynamic-import guards keep the native widget module out of the web bundle.
 - Theme chooser flow: `applyThemeAndReload("light")` → `syncWidgetRecents()` → `requestWidgetUpdate` → runtime reload. Light pref now paints Quick-Actions widget with `#F7FAF8` surface + `#1F5F3F` brand on first refresh.
+
+## v9.2 — Designed widget preview thumbnails (Oct 2026)
+
+### User ask
+"Widget Preview Images: Replace the placeholder preview icons with proper designed thumbnails so the widget picker looks polished."
+
+### Shipped
+Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widget picker with pixel-perfect thumbnails that mirror the actual widget JSX. Users browsing the launcher's widget drawer now see exactly what they're about to drop on their home screen.
+
+### Files added
+- `frontend/scripts/generate_widget_previews.py` — Pillow-based generator that renders both widgets off-screen using the same dark palette tokens as `src/widgets/palette.ts`. Idempotent; re-run any time the widget design changes.
+
+### Files overwritten
+- `frontend/assets/images/widget-preview-quick.png` — 720×288 px thumbnail of the Quick Actions widget: brand header, 4 rounded tiles with real Noto Color Emoji glyphs (📄 🤖 📝 🔳) and the actual tile labels.
+- `frontend/assets/images/widget-preview-recents.png` — 720×560 px thumbnail of the Recents widget: brand header, compact 4-tile row, and 3 sample recent-file rows (Invoice_June.pdf · Lease Agreement.pdf · Whiteboard Snap.jpg) with realistic metadata lines.
+
+### Technical notes
+- NotoColorEmoji ships only a 109-px CBDT bitmap size on this image; the generator renders at native size and resamples with Lanczos for crisp downsampling to the tile radius.
+- Previews are deliberately rendered in the dark palette because Android launchers show widget previews in dark mode by default (and most of our users keep the dark palette). The theme-sync task handler still swaps the live widget to light when the user is on the light pref — only the picker thumbnail stays dark.
+- No app code changes needed — the plugin config in `app.json` already points at `./assets/images/widget-preview-{quick,recents}.png`; it just picks up the new bytes.
