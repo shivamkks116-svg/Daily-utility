@@ -19,7 +19,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { usePremiumEnabled } from "@/src/features/flags";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
-import { getAppVersionLabel } from "@/src/utils/appVersion";
+import { getAppBuildLabel, getAppVersion } from "@/src/utils/appVersion";
 import { applyThemeAndReload } from "@/src/theme/apply";
 import {
   ThemeMode,
@@ -484,7 +484,20 @@ export default function ProfileScreen() {
         </Section>
 
         <Section title="About">
-          <Row icon="information-circle-outline" label="Version" value={getAppVersionLabel()} testID="row-version" />
+          <Row
+            icon="information-circle-outline"
+            label="Version"
+            value={getAppVersion()}
+            testID="row-version"
+          />
+          {getAppBuildLabel() ? (
+            <Row
+              icon="construct-outline"
+              label={Platform.OS === "ios" ? "Build" : "Build Code"}
+              value={getAppBuildLabel() as string}
+              testID="row-build-code"
+            />
+          ) : null}
           <Row
             icon="business-outline"
             label="Developer"
