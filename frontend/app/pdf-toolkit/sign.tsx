@@ -102,8 +102,10 @@ export default function SignPdfScreen() {
   const pickImage = async () => {
     try {
       const r = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         quality: 1,
+        // Android 13+ system Photo Picker — no READ_MEDIA_* permission needed.
+        legacy: false,
       });
       if (!r.canceled && r.assets?.[0]) setUploadedUri(r.assets[0].uri);
     } catch (e: unknown) {

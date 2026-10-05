@@ -1,14 +1,32 @@
 import * as ImagePicker from "expo-image-picker";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
 export type PickedImg = { uri: string; width: number; height: number; size: number; name: string };
 
+/**
+ * Ensure we have the right permission to launch the image library.
+ *
+ * On **Android 13+** `expo-image-picker` (v15+) delegates to the system
+ * Photo Picker by default (`legacy: false`), which handles per-file
+ * consent inline — no `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`
+ * permission is needed, and Google Play policy actually forbids
+ * requesting those broad permissions when the system picker is
+ * sufficient. So we skip the check entirely on Android.
+ *
+ * On **iOS** we still need the user to approve "Photo Library" access
+ * (full or limited) because iOS doesn't have an equivalent zero-perm
+ * picker API — `requestMediaLibraryPermissionsAsync` triggers the
+ * native prompt and respects the "Selected Photos" partial access mode.
+ */
 async function ensureLibraryPermission(): Promise<boolean> {
+  if (Platform.OS === "android") return true;
+  if (Platform.OS !== "ios") return true; // web / other → trust the browser prompt
+
   const { status, canAskAgain } = await ImagePicker.getMediaLibraryPermissionsAsync();
-  if (status === "granted") return true;
+  if (status === "granted" || status === "limited") return true;
   if (!canAskAgain) {
     Alert.alert(
       "Permission required",
@@ -17,7 +35,7 @@ async function ensureLibraryPermission(): Promise<boolean> {
     return false;
   }
   const res = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  return res.status === "granted";
+  return res.status === "granted" || res.status === "limited";
 }
 
 export async function pickSingleImage(): Promise<PickedImg | null> {
@@ -27,6 +45,10 @@ export async function pickSingleImage(): Promise<PickedImg | null> {
     mediaTypes: ["images"],
     allowsMultipleSelection: false,
     quality: 1,
+    // Explicit: use the Android 13+ system Photo Picker, not the legacy
+    // storage-permission flow. This also enables the clean per-file
+    // consent UI on Android 14+.
+    legacy: false,
   });
   if (res.canceled || !res.assets?.[0]) return null;
   const a = res.assets[0];

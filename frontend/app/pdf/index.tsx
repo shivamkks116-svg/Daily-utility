@@ -27,6 +27,8 @@ export default function PDFScreen() {
       quality: 0.8,
       base64: true,
       selectionLimit: 20,
+      // Android 13+ system Photo Picker — no READ_MEDIA_* permission needed.
+      legacy: false,
     });
     if (res.canceled) return;
     const newOnes: ImgAsset[] = (res.assets || [])

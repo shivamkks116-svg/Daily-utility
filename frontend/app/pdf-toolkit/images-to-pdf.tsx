@@ -38,6 +38,8 @@ export default function ImagesToPdfScreen() {
       quality: 0.85,
       base64: true,
       selectionLimit: 30,
+      // Android 13+ system Photo Picker — no READ_MEDIA_* permission needed.
+      legacy: false,
     });
     if (res.canceled) return;
     const newOnes: Img[] = (res.assets || [])
