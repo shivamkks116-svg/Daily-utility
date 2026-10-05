@@ -9,7 +9,7 @@ import { KeyboardProvider } from "@/src/utils/keyboard";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/contexts/AuthContext";
 import { AppLockGate } from "@/src/components/AppLockGate";
-import { colors } from "@/src/theme";
+import { activeThemeName, colors } from "@/src/theme";
 import { initializeRevenueCat, SubscriptionProvider } from "@/src/subscription/RevenueCat";
 import { AdStartup } from "@/src/ads/native";
 import { useSharedIntentHandler } from "@/src/utils/pdf/sharedIntent";
@@ -77,7 +77,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.surface }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <StatusBar barStyle="light-content" backgroundColor={colors.surface} />
+          <StatusBar
+            barStyle={activeThemeName === "light" ? "dark-content" : "light-content"}
+            backgroundColor={colors.surface}
+          />
           <AuthProvider>
             <FeatureFlagsProvider>
               <InnerLayout />
