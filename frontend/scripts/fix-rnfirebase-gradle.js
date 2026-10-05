@@ -3,52 +3,63 @@
  * Defensive post-install fix for `@react-native-firebase/app` v23–v26
  * on Gradle 8.14+ / AGP 8.x.
  *
- * The upstream `firebase-json.gradle` script applies three bare
- * `android { ... }` configuration blocks:
+ * There are TWO separate failure points inside the module's Android
+ * project — this script patches both:
  *
- *     android {
- *       defaultConfig {
- *         buildConfigField 'String', 'FIREBASE_JSON_RAW', <jsonStr>
- *       }
- *     }
+ * ─── Problem 1: `firebase-json.gradle` ───────────────────────────────
+ *   The upstream script applies three bare `android { ... }` blocks
+ *   that execute BEFORE the parent module applies the Android Gradle
+ *   plugin. Gradle 8.14+ raises:
+ *     Could not find method android() for arguments [firebase_json_*]
  *
- * The script is `apply from:`'d from the module's `build.gradle` on a
- * line that executes BEFORE the parent `android {}` DSL block, which
- * means the Android Gradle plugin's extension object isn't yet attached
- * to the Project. Older Gradle versions silently deferred this; Gradle
- * 8.14+ raises:
+ * ─── Problem 2: `build.gradle` line 63 ───────────────────────────────
+ *   The module relies on the `io.invertase.gradle.build:1.5` plugin to
+ *   apply `com.android.library` for it. That plugin uses the modern
+ *   `plugins { id "…" version "…" }` DSL which, in a sub-module build
+ *   script resolved from an Expo-managed project, isn't guaranteed to
+ *   finish applying `com.android.library` before the file's main
+ *   `android { … }` DSL block is evaluated. Same error, different line:
+ *     > Could not find method android() for arguments [build_*]
+ *     at build.gradle line 63
  *
- *   Could not find method android() for arguments [firebase_json_*]
- *
- * Fix: wrap each `android { ... }` block in `afterEvaluate { ... }` so
- * evaluation is deferred to Gradle's configure-phase completion, by
- * which point the Android DSL is live. Mirrors the pattern already
- * used in `scripts/fix-admob-kotlin.js` and is idempotent / safe to
+ * Fix for both: wrap every top-level `android { ... }` block in
+ * `afterEvaluate { … }` so evaluation is deferred to Gradle's
+ * configure-phase completion, by which point the Android DSL is
+ * guaranteed to be installed on the project. Mirrors the pattern
+ * used in `scripts/fix-admob-kotlin.js`; idempotent and safe to
  * re-run after every `yarn install`.
  */
 const fs = require("fs");
 const path = require("path");
 
-const FILE = path.join(
+const MODULE_ROOT = path.join(
   __dirname,
   "..",
   "node_modules",
   "@react-native-firebase",
   "app",
   "android",
-  "firebase-json.gradle",
 );
 
-const MARKER = "/* dailyhub-firebase-json-afterEvaluate-patch v1 */";
+const TARGETS = [
+  {
+    file: path.join(MODULE_ROOT, "firebase-json.gradle"),
+    marker: "/* dailyhub-firebase-json-afterEvaluate-patch v1 */",
+    label: "firebase-json.gradle",
+  },
+  {
+    file: path.join(MODULE_ROOT, "build.gradle"),
+    marker: "/* dailyhub-firebase-build-afterEvaluate-patch v1 */",
+    label: "build.gradle",
+  },
+];
 
 function tag(msg) {
   console.log(`[fix-rnfirebase-gradle] ${msg}`);
 }
 
 /**
- * Match any block that starts with `android {` (at any indent), tracks
- * nested braces, and returns the full matched substring. Called from
- * `wrapAndroidBlocks` which handles the actual rewrite.
+ * Find every top-level `android {` block (balanced-brace walk).
  */
 function findAndroidBlocks(src) {
   const blocks = [];
@@ -57,8 +68,7 @@ function findAndroidBlocks(src) {
   while ((m = re.exec(src)) !== null) {
     const start = m.index;
     const indent = m[1];
-    // Walk forward from the opening brace to find the matching close.
-    let i = start + m[0].length; // just past `{`
+    let i = start + m[0].length;
     let depth = 1;
     while (i < src.length && depth > 0) {
       const ch = src[i];
@@ -66,7 +76,7 @@ function findAndroidBlocks(src) {
       else if (ch === "}") depth--;
       i++;
     }
-    if (depth !== 0) break; // unbalanced — abort
+    if (depth !== 0) break;
     blocks.push({ start, end: i, indent });
     re.lastIndex = i;
   }
@@ -76,15 +86,11 @@ function findAndroidBlocks(src) {
 function wrapAndroidBlocks(src) {
   const blocks = findAndroidBlocks(src);
   if (blocks.length === 0) return src;
-
-  // Rewrite from the END backwards so earlier offsets stay valid while
-  // we splice in the longer `afterEvaluate { ... }` wrappers.
   let out = src;
+  // Rewrite from END backwards so earlier offsets stay valid.
   for (let i = blocks.length - 1; i >= 0; i--) {
     const { start, end, indent } = blocks[i];
     const original = out.slice(start, end);
-    // Re-indent the inner block by two spaces so the resulting source
-    // keeps readable indentation after wrapping.
     const inner = original
       .split("\n")
       .map((line, idx) => (idx === 0 ? line : "  " + line))
@@ -95,34 +101,38 @@ function wrapAndroidBlocks(src) {
   return out;
 }
 
-function main() {
-  if (!fs.existsSync(FILE)) {
-    tag(`skip — file not found (${FILE})`);
+function patchOne({ file, marker, label }) {
+  if (!fs.existsSync(file)) {
+    tag(`skip ${label} — file not found`);
     return;
   }
   let src;
   try {
-    src = fs.readFileSync(FILE, "utf8");
+    src = fs.readFileSync(file, "utf8");
   } catch (e) {
-    tag(`skip — read failed: ${e.message}`);
+    tag(`skip ${label} — read failed: ${e.message}`);
     return;
   }
-  if (src.includes(MARKER)) {
-    tag("already patched ✔");
+  if (src.includes(marker)) {
+    tag(`${label} already patched ✔`);
     return;
   }
   if (!/\bandroid \{/.test(src)) {
-    tag("skip — upstream pattern changed, no `android {` blocks found");
+    tag(`skip ${label} — upstream pattern changed, no \`android {\` block found`);
     return;
   }
-  const patched = `${MARKER}\n${wrapAndroidBlocks(src)}`;
+  const patched = `${marker}\n${wrapAndroidBlocks(src)}`;
   try {
-    fs.writeFileSync(FILE, patched, "utf8");
-    tag(`patched ${FILE} — android{} blocks wrapped in afterEvaluate{}`);
+    fs.writeFileSync(file, patched, "utf8");
+    tag(`patched ${label} — android{} wrapped in afterEvaluate{}`);
   } catch (e) {
-    tag(`FAILED to write: ${e.message}`);
-    process.exit(0); // don't fail install
+    tag(`FAILED to write ${label}: ${e.message}`);
+    // don't fail install
   }
+}
+
+function main() {
+  for (const t of TARGETS) patchOne(t);
 }
 
 main();
