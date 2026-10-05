@@ -18,7 +18,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/src/contexts/AuthContext";
-import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { activeThemeName, colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+
+// Hero overlay colors chosen so the login card remains readable on the
+// user's active theme — light mode gets a heavy white fade over the
+// dark Moss photograph; dark mode keeps the original soft fade.
+const LOGIN_HERO_FADE: readonly [string, string, string] =
+  activeThemeName === "light"
+    ? ["rgba(247,250,248,0.55)", "rgba(247,250,248,0.9)", colors.surface]
+    : ["rgba(17,20,18,0.2)", "rgba(17,20,18,0.75)", colors.surface];
 
 const HERO_BG =
   "https://images.unsplash.com/photo-1649861742672-20152f77c1f5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGRhcmslMjBtb3NzJTIwZ3JlZW4lMjBlbWVyYWxkJTIwZ3JhZGllbnQlMjBiYWNrZ3JvdW5kJTIwYXRtb3NwaGVyaWN8ZW58MHx8fHwxNzg1NjU4MjEwfDA&ixlib=rb-4.1.0&q=85";
@@ -219,7 +227,7 @@ export default function LoginScreen() {
     <View style={styles.root} testID="login-screen">
       <Image source={{ uri: HERO_BG }} style={styles.heroBg} blurRadius={0} />
       <LinearGradient
-        colors={["rgba(17,20,18,0.2)", "rgba(17,20,18,0.75)", colors.surface]}
+        colors={LOGIN_HERO_FADE}
         style={StyleSheet.absoluteFill}
       />
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>

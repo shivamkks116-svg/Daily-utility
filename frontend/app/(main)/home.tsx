@@ -10,7 +10,16 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { api } from "@/src/api/client";
 import { tap } from "@/src/utils/haptics";
 import { storage } from "@/src/utils/storage";
-import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+import { activeThemeName, colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
+
+// Dark gradient fades look great over the hero photograph, but on light
+// theme they drop the whole top band to near-black. Pick an overlay set
+// that matches the active surface so the fade blends into the screen
+// background instead of fighting it.
+const HERO_FADE: readonly [string, string, string] =
+  activeThemeName === "light"
+    ? ["rgba(247,250,248,0.65)", "rgba(247,250,248,0.9)", colors.surface]
+    : ["rgba(17,20,18,0.05)", "rgba(17,20,18,0.55)", colors.surface];
 import { AdBanner } from "@/src/ads/AdBanner";
 import { useSubscription } from "@/src/subscription/RevenueCat";
 import { usePremiumEnabled } from "@/src/features/flags";
@@ -186,7 +195,7 @@ export default function HomeScreen() {
         <View style={styles.hero}>
           <Image source={{ uri: HERO_BG }} style={styles.heroBg} />
           <LinearGradient
-            colors={["rgba(17,20,18,0.05)", "rgba(17,20,18,0.55)", colors.surface]}
+            colors={HERO_FADE}
             style={StyleSheet.absoluteFill}
           />
           <SafeAreaView edges={["top"]} style={styles.heroInner}>
@@ -380,7 +389,7 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.premiumCard, pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
             >
               <LinearGradient
-                colors={[colors.brandTertiary, "rgba(27,34,30,0.9)"]}
+                colors={[colors.brandTertiary, colors.surfaceTertiary]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -471,7 +480,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: radius.xl,
-    backgroundColor: "rgba(27,34,30,0.9)",
+    backgroundColor: colors.surfaceSecondary,
     borderWidth: 1,
     borderColor: colors.borderStrong,
   },
