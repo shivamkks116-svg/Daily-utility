@@ -115,15 +115,23 @@ export async function bootstrapTheme(): Promise<void> {
     // picked — no reload needed, no Appearance override to maintain.
     if (Platform.OS === "web") return;
 
+    // "System" mode (scheme === null) means "defer to the OS". Clear any
+    // leftover Appearance override so RN reads the device setting live,
+    // but DO NOT reload — reloading on every bootstrap would create an
+    // infinite loop because `Appearance.getColorScheme()` always returns
+    // the OS value (never null) which would never equal `scheme`.
+    if (scheme === null) {
+      try {
+        Appearance.setColorScheme(null);
+      } catch {}
+      return;
+    }
+
     const current = Appearance.getColorScheme();
-    // Only mutate if the pref differs from what's already active. This
-    // prevents an infinite reload loop (bootstrap → setColorScheme →
-    // reload → bootstrap → …).
-    if (scheme !== undefined && current !== scheme) {
+    // Only mutate + reload if the user has an explicit light/dark pref
+    // and it differs from what's already active.
+    if (current !== scheme) {
       Appearance.setColorScheme(scheme);
-      // One-shot reload only when the native state is actually wrong.
-      // After reload the module-load palette matches the pref so this
-      // branch is a no-op on subsequent runs.
       await reloadRuntime();
     }
   } catch {
