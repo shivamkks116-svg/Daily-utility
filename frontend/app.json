@@ -2,7 +2,7 @@
   "expo": {
     "name": "DailyHub AI",
     "slug": "frontend",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dailyhubai",
@@ -26,7 +26,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.dailyutility.app",
-      "versionCode": 4,
+      "versionCode": 6,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
