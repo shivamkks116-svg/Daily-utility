@@ -1239,6 +1239,35 @@ def _read_static(name: str) -> str:
 
 
 # Root-level routes (work when the backend is directly reachable, e.g. on emergent.host domain).
+
+# ─── AdMob app-ads.txt ───────────────────────────────────────────────
+# Google's AdMob crawler fetches this file from the root of the
+# developer's declared website to verify that the AdMob publisher ID
+# listed in Play Store / App Store matches the one that owns the ad
+# inventory. We serve it from both the frontend `/public/app-ads.txt`
+# (which Expo Metro-web exposes at the site root) AND here as a backend
+# fallback for deployment environments where only the backend is
+# directly reachable.
+#
+# Content stays in sync with `/app/frontend/public/app-ads.txt` — bump
+# both files when the publisher ID changes.
+APP_ADS_TXT = "google.com, pub-3735972538807236, DIRECT, f08c47fec0942fa0\n"
+
+
+@app.get("/app-ads.txt", include_in_schema=False)
+async def app_ads_txt_root():
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(APP_ADS_TXT, media_type="text/plain")
+
+
+@app.get("/api/app-ads.txt", include_in_schema=False)
+async def app_ads_txt_api_alias():
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(APP_ADS_TXT, media_type="text/plain")
+
+
 @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
 async def privacy_html():
     return HTMLResponse(_read_static("privacy.html"))
