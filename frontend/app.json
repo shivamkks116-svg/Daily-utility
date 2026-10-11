@@ -26,7 +26,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.dailyutility.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
@@ -211,7 +211,7 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "androidAppId": "ca-app-pub-3735972538807236~5699981361",
           "delayAppMeasurementInit": true
         }
       ],
