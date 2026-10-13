@@ -1,0 +1,26 @@
+{
+  "summary": "Tested Rewarded Unlocks feature (PDF premium gates + AI chat quota pill + reward). Backend: /api/ai/quota and /api/ai/reward (+5, max 15, 400 after) pass via guest token (TestQuotaInitial, TestRewardMaxCap, TestRewardGrantsBonus all PASSED in test_ai_quota.py). Frontend (390x844): Guest login works, /pdf-toolkit shows exactly 7 tool-premium-lock icons on the premium tools (compress, protect, sign, fill-form, watermark, pagenums, to-docx) with no lock on merge/split/reader. Locked tool /pdf-toolkit/compress shows premium-gate with 'Unlock Compress PDF' title; tapping premium-gate-watch-ad on web unlocks immediately (adsAvailable=false path) and renders the real Compress PDF screen. premium-gate-back renders. Non-locked /pdf-toolkit/merge opens directly without gate. /ai/chat shows chat-quota-pill with chat-quota-remaining '5 left' from GET /api/ai/quota; tapping it opens ai-limit-dialog in bonus mode with title 'Get 5 more AI requests' and secondary ai-limit-try-tomorrow labelled 'Not Now' that closes the dialog. On web, tapping Watch Rewarded Ad surfaces an error message (expected since showRewardedAd returns false). After sending a chat message the pill correctly drops from '5 left' to '4 left'. No React Native red screen, no deprecated expo-av/expo-barcode-scanner/expo-background-fetch usage detected in reviewed files. Minor web-only console warnings only (shadow* deprecation, expo-notifications web stub, Image resizeMode, props.pointerEvents) — not blocking and pre-existing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_quota.py",
+    "/app/test_reports/pytest/test_ai_quota_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AILimitDialog shows the slightly misleading error 'Ad wasn\u2019t completed. Please watch the full ad to earn bonus requests.' when ADS_ENABLED=true but adsAvailable=false (web/Expo Go). Consider branching the message so web users see 'Rewarded ads are only available in the Android app' instead of an ad-completion error. Non-blocking.",
+    "PremiumToolGate uses in-component useState for unlocked flag \u2014 unlocks reset on remount/navigation, which matches 'one ad = that tool usable once per visit' intent, but a brief doc comment or persistence-per-navigation strategy would make the contract clearer."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Tests create disposable guest users prefixed TEST_QuotaUser via /api/auth/guest.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend AI quota tests reside at /app/backend/tests/test_ai_quota.py and use EXPO_PUBLIC_BACKEND_URL. Frontend testIDs covered: tool-premium-lock, premium-gate, premium-gate-watch-ad, premium-gate-back, chat-quota-pill, chat-quota-remaining, ai-limit-dialog, ai-limit-watch-ad, ai-limit-try-tomorrow. On web, showRewardedAd always resolves false (rewarded.web.ts) so premium gate unlocks via the adsAvailable=false short-circuit while AI bonus dialog shows an error \u2014 both are expected per native/web split.",
+  "rca_of_issue": ""
+}

@@ -54,7 +54,9 @@ export function ToolCard({
   soon,
   favorite,
   onFav,
+  premium,
 }: {
+  premium?: boolean;
   icon: IconName;
   label: string;
   desc?: string;
@@ -82,7 +84,10 @@ export function ToolCard({
       >
         <Ionicons name={icon} size={22} color={colors.brandPrimary} />
       </LinearGradient>
-      <Text style={c.label} numberOfLines={1}>{label}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        {premium ? <Ionicons name="lock-closed" size={12} color={colors.brandPrimary} testID="tool-premium-lock" /> : null}
+        <Text style={[c.label, { flexShrink: 1 }]} numberOfLines={1}>{label}</Text>
+      </View>
       {desc ? <Text style={c.desc} numberOfLines={2}>{desc}</Text> : null}
       {soon ? <View style={c.soonBadge}><Text style={c.soonTxt}>SOON</Text></View> : null}
       {!soon && onFav ? (

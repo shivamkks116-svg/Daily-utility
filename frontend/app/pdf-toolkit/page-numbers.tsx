@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,7 +13,7 @@ import { addRecent } from "@/src/utils/toolkit/recents";
 type Position = "footer-center" | "footer-right" | "footer-left" | "header-center";
 type Format = "n" | "n/total" | "Page n of total";
 
-export default function PageNumbersScreen() {
+function PageNumbersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [file, setFile] = useState<PickedPdf | null>(null);
@@ -133,3 +134,5 @@ const styles = StyleSheet.create({
   shareBtn: { backgroundColor: colors.brandPrimary, width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   footer: { padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.divider },
 });
+
+export default withPremiumGate(PageNumbersScreen, "Page Numbers");

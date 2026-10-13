@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Alert, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,7 +10,7 @@ import { pickPdfs, sharePdf, humanBytes, type PickedPdf } from "@/src/utils/pdf/
 import { compressPdf } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
-export default function CompressPdfScreen() {
+function CompressPdfScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [file, setFile] = useState<PickedPdf | null>(null);
@@ -99,3 +100,5 @@ const styles = StyleSheet.create({
   resultValue: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.bold },
   overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
 });
+
+export default withPremiumGate(CompressPdfScreen, "Compress PDF");

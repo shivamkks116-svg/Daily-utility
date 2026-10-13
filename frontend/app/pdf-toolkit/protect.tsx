@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Alert, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +11,7 @@ import { protectPdf, unlockPdf } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
 /** Password Protect + Unlock PDF — single screen with a mode toggle. */
-export default function ProtectPdfScreen() {
+function ProtectPdfScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<"protect" | "unlock">("protect");
@@ -157,3 +158,5 @@ const styles = StyleSheet.create({
   eye: { position: "absolute", right: spacing.md, top: 14, padding: 4 },
   overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
 });
+
+export default withPremiumGate(ProtectPdfScreen, "Password Protect");

@@ -8,6 +8,10 @@ import { ToolkitHeader, ToolCard, EmptyState } from "@/src/components/toolkit/Pr
 import { listRecents, listFavorites, toggleFavorite, formatBytes, formatDate, type RecentEntry, removeRecent, addRecent } from "@/src/utils/toolkit/recents";
 import { PdfUrlImportModal } from "@/src/components/PdfUrlImportModal";
 import type { PickedPdf } from "@/src/utils/pdf/helpers";
+import { useSubscription } from "@/src/subscription/RevenueCat";
+
+// Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
+const PREMIUM_TOOLS = new Set(["compress", "protect", "sign", "fill-form", "watermark", "pagenums", "to-docx"]);
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -83,6 +87,7 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
 export default function PdfToolkitHub() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isSubscribed } = useSubscription();
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [favs, setFavs] = useState<string[]>([]);
@@ -211,6 +216,7 @@ export default function PdfToolkitHub() {
                     label={t.label}
                     desc={t.desc}
                     soon={t.soon}
+                    premium={!isSubscribed && PREMIUM_TOOLS.has(t.key)}
                     onPress={() => t.route && router.push(t.route as any)}
                     favorite={favs.includes(t.key)}
                     onFav={() => onFav(t.key)}

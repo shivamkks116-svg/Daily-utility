@@ -3,16 +3,19 @@ import { Modal, View, Text, StyleSheet, Pressable, ActivityIndicator } from "rea
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api/client";
-import { showRewardedAd } from "@/src/ads/rewarded";
+import { showRewardedAdResult } from "@/src/ads/rewarded";
 import { ADS_ENABLED } from "@/src/ads/ids";
 
 export type AILimitDialogProps = {
   visible: boolean;
   onClose: () => void;
   onGranted?: () => void; // called after successful reward grant
+  /** "limit" = quota exhausted (default); "bonus" = voluntary top-up before running out. */
+  mode?: "limit" | "bonus";
+  remaining?: number;
 };
 
-export function AILimitDialog({ visible, onClose, onGranted }: AILimitDialogProps) {
+export function AILimitDialog({ visible, onClose, onGranted, mode = "limit", remaining }: AILimitDialogProps) {
   const [loadingAd, setLoadingAd] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -24,17 +27,19 @@ export function AILimitDialog({ visible, onClose, onGranted }: AILimitDialogProp
     }
     setLoadingAd(true);
     try {
-      const earned = await showRewardedAd();
-      if (!earned) {
+      const result = await showRewardedAdResult();
+      if (result !== "earned") {
         setLoadingAd(false);
-        setErr("Ad wasn't completed. Please watch the full ad to earn bonus requests.");
+        setErr(result === "unavailable"
+          ? "No ad available right now. Please try again in a moment."
+          : "Ad wasn't completed. Please watch the full ad to earn bonus requests.");
         return;
       }
       try {
         await api("/ai/reward", { method: "POST", body: {} });
-      } catch {
+      } catch (e: any) {
         setLoadingAd(false);
-        setErr("Couldn't grant bonus. Please try again in a moment.");
+        setErr(e?.message?.includes("bonus limit") ? "Daily bonus limit reached. Come back tomorrow." : "Couldn't grant bonus. Please try again in a moment.");
         return;
       }
       setLoadingAd(false);
@@ -53,11 +58,23 @@ export function AILimitDialog({ visible, onClose, onGranted }: AILimitDialogProp
           <View style={styles.icon}>
             <Ionicons name="flash" size={26} color={colors.onBrandPrimary} />
           </View>
-          <Text style={styles.title}>You&apos;ve reached today&apos;s{"\n"}free AI limit.</Text>
-          <Text style={styles.subtitle}>
-            You get 5 free AI requests every day. Watch a short ad to unlock 5 more right now, or
-            come back tomorrow for a fresh set.
-          </Text>
+          {mode === "bonus" ? (
+            <>
+              <Text style={styles.title}>Get 5 more{"\n"}AI requests</Text>
+              <Text style={styles.subtitle}>
+                You have {remaining ?? 0} free request{remaining === 1 ? "" : "s"} left today. Watch a
+                short ad to add 5 more right now.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.title}>You&apos;ve reached today&apos;s{"\n"}free AI limit.</Text>
+              <Text style={styles.subtitle}>
+                You get 5 free AI requests every day. Watch a short ad to unlock 5 more right now, or
+                come back tomorrow for a fresh set.
+              </Text>
+            </>
+          )}
 
           {err ? <Text style={styles.err}>{err}</Text> : null}
 
@@ -83,7 +100,7 @@ export function AILimitDialog({ visible, onClose, onGranted }: AILimitDialogProp
             style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
           >
             <Ionicons name="time-outline" size={18} color={colors.onSurface} />
-            <Text style={styles.secondaryBtnText}>Try Again Tomorrow</Text>
+            <Text style={styles.secondaryBtnText}>{mode === "bonus" ? "Not Now" : "Try Again Tomorrow"}</Text>
           </Pressable>
 
           <View style={styles.comingSoonRow} testID="ai-limit-coming-soon">

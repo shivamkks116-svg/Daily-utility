@@ -1063,3 +1063,7 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## AdMob fix (v1.0.4 / versionCode 8)
 - Production ad unit IDs hardcoded as defaults in src/ads/native.native.tsx (root .gitignore excludes .env, so cloud builds fell back to Test IDs). Test IDs only when __DEV__ or EXPO_PUBLIC_ADMOB_USE_TEST_IDS=true.
+
+## Rewarded Unlocks (v1.0.4)
+- PDF premium tools (compress, protect, sign, fill-form, watermark, page-numbers, to-docx) wrapped with withPremiumGate (src/components/PremiumToolGate.tsx): 1 rewarded ad = 1 visit unlock; premium users bypass; no-fill/web unlocks free.
+- AI Chat header quota pill ('N left') + voluntary bonus mode in AILimitDialog (+5, max 15/day).

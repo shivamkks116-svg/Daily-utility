@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import {
   View,
@@ -25,7 +26,7 @@ import { pickPdfs, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
 import { listPdfFields, fillPdfFields, type PDFField } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
-export default function FillFormScreen() {
+function FillFormScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [file, setFile] = useState<PickedPdf | null>(null);
@@ -316,3 +317,5 @@ const styles = StyleSheet.create({
   resultSub: { color: colors.onSurfaceSecondary, fontSize: fontSize.xs, marginTop: 2 },
   overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
 });
+
+export default withPremiumGate(FillFormScreen, "Fill Form");

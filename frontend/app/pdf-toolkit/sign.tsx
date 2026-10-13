@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useRef, useState } from "react";
 import {
   View,
@@ -48,7 +49,7 @@ const POS_LABELS: { key: Pos; label: string; x: number; y: number }[] = [
   { key: "br", label: "Bot R", x: 70, y: 80 },
 ];
 
-export default function SignPdfScreen() {
+function SignPdfScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [file, setFile] = useState<PickedPdf | null>(null);
@@ -359,3 +360,5 @@ const styles = StyleSheet.create({
   resultTitle: { color: colors.onBrandTertiary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
   overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
 });
+
+export default withPremiumGate(SignPdfScreen, "Sign PDF");

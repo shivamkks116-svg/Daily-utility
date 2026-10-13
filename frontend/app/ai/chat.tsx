@@ -39,7 +39,17 @@ export default function AIChatScreen() {
   const [sending, setSending] = useState(false);
   const [limitVisible, setLimitVisible] = useState(false);
   const [pendingRetry, setPendingRetry] = useState<string | null>(null);
+  const [quota, setQuota] = useState<{ remaining: number; bonus_available: boolean } | null>(null);
+  const [bonusMode, setBonusMode] = useState(false);
   const listRef = useRef<FlatList<Msg>>(null);
+
+  const loadQuota = useCallback(async () => {
+    try {
+      setQuota(await api<{ remaining: number; bonus_available: boolean }>("/ai/quota"));
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadQuota(); }, [loadQuota]);
 
   useEffect(() => {
     (async () => {
@@ -82,9 +92,10 @@ export default function AIChatScreen() {
       }
     } finally {
       setSending(false);
+      loadQuota();
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     }
-  }, [input, sending]);
+  }, [input, sending, loadQuota]);
 
   const regenerate = useCallback(async () => {
     // Find the last user message and re-send it
@@ -119,7 +130,21 @@ export default function AIChatScreen() {
             <Text style={styles.modelText}>Gemini 3 Flash</Text>
           </View>
         </View>
-        <View style={{ width: 44 }} />
+        {quota ? (
+          <Pressable
+            testID="chat-quota-pill"
+            disabled={!quota.bonus_available}
+            onPress={() => { tap(); setBonusMode(true); setLimitVisible(true); }}
+            style={({ pressed }) => [styles.quotaPill, pressed && { opacity: 0.8 }]}
+          >
+            <Text style={styles.quotaText} testID="chat-quota-remaining">{quota.remaining} left</Text>
+            {quota.bonus_available ? (
+              <Ionicons name="add-circle" size={16} color={colors.brandPrimary} />
+            ) : null}
+          </Pressable>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </SafeAreaView>
 
       <KeyboardAvoidingView
@@ -225,11 +250,15 @@ export default function AIChatScreen() {
 
       <AILimitDialog
         visible={limitVisible}
+        mode={bonusMode ? "bonus" : "limit"}
+        remaining={quota?.remaining}
         onClose={() => {
           setLimitVisible(false);
+          setBonusMode(false);
           setPendingRetry(null);
         }}
         onGranted={() => {
+          loadQuota();
           const retry = pendingRetry;
           setPendingRetry(null);
           if (retry) {
@@ -252,6 +281,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill, backgroundColor: colors.brandPrimary,
   },
   modelText: { color: colors.onBrandPrimary, fontSize: 10, fontWeight: fontWeight.bold },
+  quotaPill: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  quotaText: { color: colors.onSurface, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.md },
   emptyIcon: {
     width: 64, height: 64, borderRadius: radius.lg,
