@@ -1060,3 +1060,6 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - NotoColorEmoji ships only a 109-px CBDT bitmap size on this image; the generator renders at native size and resamples with Lanczos for crisp downsampling to the tile radius.
 - Previews are deliberately rendered in the dark palette because Android launchers show widget previews in dark mode by default (and most of our users keep the dark palette). The theme-sync task handler still swaps the live widget to light when the user is on the light pref — only the picker thumbnail stays dark.
 - No app code changes needed — the plugin config in `app.json` already points at `./assets/images/widget-preview-{quick,recents}.png`; it just picks up the new bytes.
+
+## AdMob fix (v1.0.4 / versionCode 8)
+- Production ad unit IDs hardcoded as defaults in src/ads/native.native.tsx (root .gitignore excludes .env, so cloud builds fell back to Test IDs). Test IDs only when __DEV__ or EXPO_PUBLIC_ADMOB_USE_TEST_IDS=true.

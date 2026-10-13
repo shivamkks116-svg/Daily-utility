@@ -31,16 +31,19 @@ if (nativeAndroid) {
 
 export const adsAvailable = !!admob;
 const TestIds = admob?.TestIds;
-// Direct access — Metro inlines `process.env.EXPO_PUBLIC_*` at bundle time.
-const useTests =
-  __DEV__ ||
-  process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === "true" ||
-  process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === undefined;
+// Production IDs are the default because `.env` is not always shipped with
+// cloud builds. Test IDs only in dev builds or when explicitly requested.
+const PROD_IDS = {
+  banner: "ca-app-pub-3735972538807236/6750087582",
+  interstitial: "ca-app-pub-3735972538807236/4123924246",
+  rewarded: "ca-app-pub-3735972538807236/9376336646",
+};
+const useTests = __DEV__ || process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === "true";
 
 export const adUnitIds = {
-  banner: useTests ? TestIds?.ADAPTIVE_BANNER : process.env.EXPO_PUBLIC_ADMOB_BANNER_ID,
-  interstitial: useTests ? TestIds?.INTERSTITIAL : process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID,
-  rewarded: useTests ? TestIds?.REWARDED : process.env.EXPO_PUBLIC_ADMOB_REWARDED_ID,
+  banner: useTests ? TestIds?.ADAPTIVE_BANNER : process.env.EXPO_PUBLIC_ADMOB_BANNER_ID || PROD_IDS.banner,
+  interstitial: useTests ? TestIds?.INTERSTITIAL : process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID || PROD_IDS.interstitial,
+  rewarded: useTests ? TestIds?.REWARDED : process.env.EXPO_PUBLIC_ADMOB_REWARDED_ID || PROD_IDS.rewarded,
 };
 
 /* ------------------------------------------------------------------ */
