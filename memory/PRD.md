@@ -1070,3 +1070,4 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## PDF links
 - PdfViewer.native.tsx: onPressLink -> Linking.openURL so website/email links inside PDFs open.
+- Link confirmation: Alert shows domain + full URL + HTTP warning with Cancel/Copy/Open before opening PDF links.
