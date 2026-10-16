@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Image, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,7 +46,7 @@ async function renderWatermarkedImage(imgUri: string, text: string, pos: Positio
   return pdf.uri;
 }
 
-export default function ImageWatermarkScreen() {
+function ImageWatermarkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [img, setImg] = useState<PickedImg | null>(null);
@@ -144,3 +145,5 @@ const styles = StyleSheet.create({
   shareBtn: { backgroundColor: colors.brandPrimary, width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   footer: { padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.divider },
 });
+
+export default withPremiumGate(ImageWatermarkScreen, "Watermark");

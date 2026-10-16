@@ -6,6 +6,10 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { colors, fontSize, fontWeight, spacing } from "@/src/theme";
 import { ToolkitHeader, ToolCard, EmptyState } from "@/src/components/toolkit/Primitives";
 import { listFavorites, toggleFavorite } from "@/src/utils/toolkit/recents";
+import { useSubscription } from "@/src/subscription/RevenueCat";
+
+// Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
+const PREMIUM_TOOLS = new Set(["img-watermark", "img-describe"]);
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -48,6 +52,7 @@ const CATEGORIES: { title: string; tools: Tool[] }[] = [
 export default function ImageToolkitHub() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isSubscribed } = useSubscription();
   const [query] = useState("");
   const [favs, setFavs] = useState<string[]>([]);
   const [refresh, setRefresh] = useState(false);
@@ -89,6 +94,7 @@ export default function ImageToolkitHub() {
                     label={t.label}
                     desc={t.desc}
                     soon={t.soon}
+                    premium={!isSubscribed && PREMIUM_TOOLS.has(t.key)}
                     onPress={() => t.route && router.push(t.route as any)}
                     favorite={favs.includes(t.key)}
                     onFav={() => onFav(t.key)}

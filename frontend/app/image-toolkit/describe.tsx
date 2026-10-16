@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Alert, Image, Modal } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +11,7 @@ import { pickSingleImage, type PickedImg } from "@/src/utils/image/helpers";
 import { readImageBase64 } from "@/src/utils/image";
 import { api } from "@/src/api/client";
 
-export default function ImageDescribeScreen() {
+function ImageDescribeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [img, setImg] = useState<PickedImg | null>(null);
@@ -99,3 +100,5 @@ const styles = StyleSheet.create({
   modalTitle: { color: colors.onSurface, fontSize: fontSize.lg, fontWeight: fontWeight.bold, marginTop: spacing.md, marginBottom: spacing.sm },
   modalBody: { color: colors.onSurfaceSecondary, fontSize: fontSize.md, lineHeight: 22 },
 });
+
+export default withPremiumGate(ImageDescribeScreen, "Describe Image");
