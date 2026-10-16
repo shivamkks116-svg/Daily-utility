@@ -2158,6 +2158,114 @@ async def docx_to_pdf(payload: DocxToPDFIn, authorization: Optional[str] = Heade
     }
 
 
+# ---------------------- Push notifications ----------------------
+import asyncio as _asyncio
+from push import register_device as _push_register, send_push_chunked as _send_push_chunked
+
+IST = timezone(timedelta(hours=5, minutes=30))
+DAILY_REMINDER_HOUR_IST = 9
+DAILY_REMINDER = {
+    "title": "Good morning! ☀️",
+    "message": "Check today's plan and complete your habits on DailyHub.",
+    "action_url": "/home",
+}
+
+
+class RegisterPushBody(BaseModel):
+    user_id: Optional[str] = None  # ignored — taken from the session
+    platform: str
+    device_token: str
+
+
+class PushPrefsBody(BaseModel):
+    daily_reminder: bool
+
+
+class BroadcastBody(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=240)
+
+
+@api_router.post("/register-push", status_code=201)
+async def register_push(body: RegisterPushBody, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await _push_register(user["user_id"], body.platform, body.device_token)
+    await db.push_users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"platform": body.platform, "registered_at": utcnow()},
+         "$setOnInsert": {"daily_reminder": True}},
+        upsert=True,
+    )
+    return {"status": "registered"}
+
+
+@api_router.get("/push/prefs")
+async def get_push_prefs(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    doc = await db.push_users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"daily_reminder": bool(doc.get("daily_reminder", True)) if doc else True}
+
+
+@api_router.put("/push/prefs")
+async def set_push_prefs(body: PushPrefsBody, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    await db.push_users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"daily_reminder": body.daily_reminder}},
+        upsert=True,
+    )
+    return {"daily_reminder": body.daily_reminder}
+
+
+@api_router.post("/admin/push/broadcast")
+async def admin_push_broadcast(body: BroadcastBody, authorization: Optional[str] = Header(default=None)):
+    actor = await require_admin(authorization)
+    ids = [d["user_id"] async for d in db.push_users.find({}, {"_id": 0, "user_id": 1})]
+    sent = await _send_push_chunked(ids, {"title": body.title.strip(), "message": body.message.strip()},
+                                    idempotency_prefix=f"broadcast-{uuid.uuid4().hex}")
+    await db.push_broadcasts.insert_one({
+        "title": body.title, "message": body.message, "recipients": sent,
+        "sent_by": actor.get("email"), "created_at": utcnow(),
+    })
+    return {"recipients": sent}
+
+
+async def _send_daily_reminders_if_due():
+    now_ist = datetime.now(IST)
+    if now_ist.hour < DAILY_REMINDER_HOUR_IST:
+        return
+    day = now_ist.strftime("%Y-%m-%d")
+    # Atomic claim so only one worker / one loop iteration sends per day.
+    res = await db.app_config.update_one(
+        {"_type": "job", "key": "daily_reminder", "last_day": {"$ne": day}},
+        {"$set": {"last_day": day, "ran_at": utcnow()}},
+        upsert=False,
+    )
+    if res.modified_count == 0:
+        exists = await db.app_config.find_one({"_type": "job", "key": "daily_reminder"})
+        if exists:
+            return
+        try:
+            await db.app_config.insert_one({"_type": "job", "key": "daily_reminder", "last_day": day, "ran_at": utcnow()})
+        except Exception:
+            return
+    ids = [d["user_id"] async for d in db.push_users.find({"daily_reminder": {"$ne": False}}, {"_id": 0, "user_id": 1})]
+    try:
+        sent = await _send_push_chunked(ids, DAILY_REMINDER, idempotency_prefix=f"daily-{day}")
+        logger.info("Daily reminder sent to %s users", sent)
+    except Exception as e:
+        logger.warning("Daily reminder push failed (non-blocking): %s", e)
+
+
+async def _daily_reminder_loop():
+    while True:
+        try:
+            await _send_daily_reminders_if_due()
+        except Exception:
+            logger.exception("daily reminder loop error")
+        await _asyncio.sleep(60)
+
+
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 
@@ -2189,9 +2297,12 @@ async def on_startup():
         await db.qr_scans.create_index([("user_id", 1), ("created_at", -1)])
         await db.reminders.create_index([("user_id", 1), ("created_at", 1)])
         await db.premium.create_index("user_id", unique=True)
+        await db.push_users.create_index("user_id", unique=True)
         logger.info("Indexes ensured.")
     except Exception:
         logger.exception("Index creation issue")
+
+    _asyncio.create_task(_daily_reminder_loop())
 
     # Pre-warm Firebase ID-token verification — fetch Google's public JWKS at
     # startup so the *first* real sign-in doesn't eat 3-8 s of cold latency.

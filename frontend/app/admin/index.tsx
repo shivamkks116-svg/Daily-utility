@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
+  TextInput,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -205,8 +206,86 @@ export default function AdminScreen() {
             <Text style={styles.previewBtnText}>Preview Premium page</Text>
           </Pressable>
         </View>
+
+        <BroadcastCard />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function BroadcastCard() {
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = () => {
+    if (!title.trim() || !message.trim()) {
+      Alert.alert("Missing text", "Please enter both a title and a message.");
+      return;
+    }
+    Alert.alert("Send to all users?", `${title.trim()}\n\n${message.trim()}`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Send",
+        onPress: async () => {
+          setSending(true);
+          try {
+            const r = await api<{ recipients: number }>("/admin/push/broadcast", {
+              method: "POST",
+              body: { title: title.trim(), message: message.trim() },
+            });
+            Alert.alert("Sent", `Notification sent to ${r.recipients} user(s).`);
+            setTitle("");
+            setMessage("");
+          } catch (e: unknown) {
+            Alert.alert("Send failed", (e as Error)?.message || String(e));
+          } finally {
+            setSending(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  return (
+    <View style={styles.card} testID="admin-broadcast-card">
+      <View style={styles.cardHead}>
+        <View style={styles.cardIcon}>
+          <Ionicons name="megaphone" size={20} color={colors.brandPrimary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>Send Notification</Text>
+          <Text style={styles.cardSub}>Push an app update or announcement to every user.</Text>
+        </View>
+      </View>
+      <TextInput
+        testID="broadcast-title"
+        value={title}
+        onChangeText={setTitle}
+        placeholder="Title (e.g. New update is live!)"
+        placeholderTextColor={colors.onSurfaceTertiary}
+        maxLength={80}
+        style={styles.input}
+      />
+      <TextInput
+        testID="broadcast-message"
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Message"
+        placeholderTextColor={colors.onSurfaceTertiary}
+        maxLength={240}
+        multiline
+        style={[styles.input, { minHeight: 88, textAlignVertical: "top" }]}
+      />
+      <Pressable
+        testID="broadcast-send"
+        onPress={send}
+        disabled={sending}
+        style={({ pressed }) => [styles.btn, { alignSelf: "stretch", alignItems: "center", marginTop: spacing.xs }, (pressed || sending) && { opacity: 0.85 }]}
+      >
+        {sending ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.btnText}>Send to all users</Text>}
+      </Pressable>
+    </View>
   );
 }
 
@@ -295,6 +374,17 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   cardSub: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2, lineHeight: 16 },
   metaText: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs },
+  input: {
+    color: colors.onSurface,
+    fontSize: fontSize.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 48,
+  },
   previewBtn: {
     flexDirection: "row",
     alignItems: "center",

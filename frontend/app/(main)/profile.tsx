@@ -21,6 +21,7 @@ import { usePremiumEnabled } from "@/src/features/flags";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { getAppVersion } from "@/src/utils/appVersion";
 import { applyThemeAndReload } from "@/src/theme/apply";
+import { getDailyReminderPref, requestAndRegister, setDailyReminderPref } from "@/src/utils/push";
 import {
   ThemeMode,
   LanguageCode,
@@ -106,6 +107,7 @@ export default function ProfileScreen() {
     setThemeMode(t);
     setLang(l);
     setNotifOn(n);
+    getDailyReminderPref().then(setNotifOn).catch(() => {});
     setAppLockOn(a);
     setStorageStr(formatBytes(b));
   }, []);
@@ -155,7 +157,26 @@ export default function ProfileScreen() {
   async function toggleNotif(v: boolean) {
     setNotifOn(v);
     await setNotifications(v);
-    showToast(v ? "Notifications enabled" : "Notifications disabled");
+    if (v && Platform.OS !== "web") {
+      const { granted, canAskAgain } = await requestAndRegister();
+      if (!granted) {
+        Alert.alert(
+          "Notifications are off",
+          "Allow notifications to receive your 9 AM daily reminder.",
+          canAskAgain
+            ? [{ text: "OK" }]
+            : [{ text: "Later", style: "cancel" }, { text: "Open Settings", onPress: () => Linking.openSettings() }],
+        );
+      }
+    }
+    try {
+      await setDailyReminderPref(v);
+      showToast(v ? "Daily reminder on · 9 AM" : "Daily reminder off");
+    } catch {
+      setNotifOn(!v);
+      await setNotifications(!v);
+      showToast("Couldn't save. Check your connection.");
+    }
   }
 
   async function toggleAppLock(v: boolean) {
@@ -371,7 +392,7 @@ export default function ProfileScreen() {
           />
           <ToggleRow
             icon="notifications-outline"
-            label="Notifications"
+            label="Daily Reminder (9 AM)"
             value={notifOn}
             onValueChange={toggleNotif}
             testID="row-notif"

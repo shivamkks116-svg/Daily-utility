@@ -1072,3 +1072,8 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - PdfViewer.native.tsx: onPressLink -> Linking.openURL so website/email links inside PDFs open.
 - Link confirmation: Alert shows domain + full URL + HTTP warning with Cancel/Copy/Open before opening PDF links.
 - Image tools watermark + describe also gated with withPremiumGate (keys img-watermark, img-describe).
+
+## Push Notifications (Emergent managed relay)
+- backend/push.py (send_push, register_device). Endpoints: POST /api/register-push (auth), GET/PUT /api/push/prefs, POST /api/admin/push/broadcast (admin). Daily reminder loop at 9 AM IST (atomic claim in app_config _type=job key=daily_reminder). push_users collection stores user_id + daily_reminder (no tokens).
+- Frontend: module-scope handler/channel in app/_layout.tsx, src/components/PushSetup.tsx (tap handlers, pre-prompt, weekly settings nudge), src/utils/push.ts, Profile 'Daily Reminder (9 AM)' toggle, Admin 'Send Notification' card.
+- EMERGENT_PUSH_KEY=placeholder in backend/.env — replaced at deploy. Works only on real build.

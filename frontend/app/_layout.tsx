@@ -15,6 +15,28 @@ import { AdStartup } from "@/src/ads/native";
 import { useSharedIntentHandler } from "@/src/utils/pdf/sharedIntent";
 import { FeatureFlagsProvider } from "@/src/features/flags";
 import { bootstrapTheme } from "@/src/theme/apply";
+import * as Notifications from "expo-notifications";
+import { PushSetup } from "@/src/components/PushSetup";
+
+// Push: foreground display + Android channel — module scope, native only.
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    sound: "default",
+  }).catch(() => {});
+}
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -50,6 +72,7 @@ function InnerLayout() {
     <SubscriptionProvider userId={user?.user_id}>
       <View style={{ flex: 1, backgroundColor: colors.surface }}>
         <AdStartup />
+        <PushSetup userId={user?.user_id} />
         <AppLockGate>
           <Stack
             screenOptions={{
