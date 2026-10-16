@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Linking, Platform, StyleSheet, View } from "react-native";
 import Pdf from "react-native-pdf";
 import { colors } from "@/src/theme";
 import type { PdfViewerProps } from "./index.d";
@@ -49,6 +49,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           onPageChanged?.(page, numberOfPages)
         }
         onError={onError}
+        onPressLink={(link) => {
+          Linking.openURL(link).catch(() => {});
+        }}
       />
     </View>
   );

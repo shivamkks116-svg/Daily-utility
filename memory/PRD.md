@@ -1067,3 +1067,6 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 ## Rewarded Unlocks (v1.0.4)
 - PDF premium tools (compress, protect, sign, fill-form, watermark, page-numbers, to-docx) wrapped with withPremiumGate (src/components/PremiumToolGate.tsx): 1 rewarded ad = 1 visit unlock; premium users bypass; no-fill/web unlocks free.
 - AI Chat header quota pill ('N left') + voluntary bonus mode in AILimitDialog (+5, max 15/day).
+
+## PDF links
+- PdfViewer.native.tsx: onPressLink -> Linking.openURL so website/email links inside PDFs open.
