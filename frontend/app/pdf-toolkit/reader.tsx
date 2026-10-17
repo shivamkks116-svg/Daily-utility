@@ -14,6 +14,7 @@ import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState } from "@/src
 import { pickPdfs, sharePdf, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
 import { addRecent } from "@/src/utils/toolkit/recents";
 import { PdfViewer } from "@/src/components/PdfViewer";
+import { PdfSearchSheet } from "@/src/components/PdfSearchSheet";
 
 /**
  * Native PDF Reader.
@@ -35,6 +36,8 @@ export default function PdfReaderScreen() {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [password, setPassword] = useState<string | undefined>(undefined);
+  const [searchTab, setSearchTab] = useState<"search" | "links" | null>(null);
+  const [jumpTo, setJumpTo] = useState<{ page: number } | undefined>(undefined);
 
   // Load a PDF shared via an intent.
   useEffect(() => {
@@ -126,6 +129,12 @@ export default function PdfReaderScreen() {
                 {file.size ? `  ·  ${humanBytes(file.size)}` : ""}
               </Text>
             </View>
+            <Pressable testID="pdf-reader-search" onPress={() => setSearchTab("search")} style={styles.iconBtn}>
+              <Ionicons name="search" size={18} color={colors.onSurface} />
+            </Pressable>
+            <Pressable testID="pdf-reader-links" onPress={() => setSearchTab("links")} style={styles.iconBtn}>
+              <Ionicons name="link" size={18} color={colors.onSurface} />
+            </Pressable>
             <Pressable onPress={pick} style={styles.iconBtn}>
               <Ionicons name="folder-open-outline" size={18} color={colors.onSurface} />
             </Pressable>
@@ -140,6 +149,16 @@ export default function PdfReaderScreen() {
             onLoad={onLoad}
             onPageChanged={(page) => setCurrentPage(page)}
             onError={onError}
+            jumpTo={jumpTo}
+          />
+
+          <PdfSearchSheet
+            visible={searchTab !== null}
+            uri={file.uri}
+            numPages={numPages}
+            initialTab={searchTab || "search"}
+            onClose={() => setSearchTab(null)}
+            onJump={(page) => { setJumpTo({ page }); setCurrentPage(page); }}
           />
 
           <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>

@@ -1443,6 +1443,41 @@ async def pdf_extract_text(payload: PDFFileIn, authorization: Optional[str] = He
     return {"text": text, "chars": len(text)}
 
 
+_URL_RE = _re.compile(r"(https?://[^\s<>\"')\]]+|www\.[^\s<>\"')\]]+)", _re.I)
+
+
+@api_router.post("/pdf/index")
+async def pdf_index(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    """Per-page text + links so the reader can search words and list clickable links."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    pages, links, seen = [], [], set()
+    try:
+        for i, page in enumerate(doc):
+            if i >= 1000:
+                break
+            text = _re.sub(r"[ \t]+", " ", page.get_text("text") or "")[:20000]
+            pages.append({"page": i + 1, "text": text})
+            found = [l.get("uri") for l in page.get_links() if l.get("uri")]
+            found += [m.rstrip(".,;:") for m in _URL_RE.findall(text)]
+            for uri in found:
+                if uri.lower().startswith("www."):
+                    uri = "https://" + uri
+                if (i + 1, uri) in seen:
+                    continue
+                seen.add((i + 1, uri))
+                links.append({"page": i + 1, "uri": uri})
+    finally:
+        doc.close()
+    return {"pages": pages, "links": links}
+
+
 @api_router.post("/pdf/info")
 async def pdf_info(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
     await require_user(authorization)

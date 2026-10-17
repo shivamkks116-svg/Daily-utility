@@ -22,6 +22,8 @@ export interface PdfViewerProps {
   onError?: (err: unknown) => void;
   /** Show default pinch-zoom + double-tap controls. */
   enablePaging?: boolean;
+  /** Jump to a page (1-indexed). Pass a new object each time to re-trigger. */
+  jumpTo?: { page: number };
   style?: import("react-native").StyleProp<import("react-native").ViewStyle>;
 }
 

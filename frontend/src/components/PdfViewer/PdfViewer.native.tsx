@@ -6,29 +6,12 @@
  * milliseconds regardless of document size — no server round-trip, no base64.
  */
 
-import React, { useMemo } from "react";
-import { Alert, Linking, Platform, StyleSheet, View } from "react-native";
-import * as Clipboard from "expo-clipboard";
+import React, { useEffect, useMemo, useRef } from "react";
+import { Platform, StyleSheet, View } from "react-native";
 import Pdf from "react-native-pdf";
 import { colors } from "@/src/theme";
+import { confirmOpenLink } from "@/src/utils/confirmLink";
 import type { PdfViewerProps } from "./index.d";
-
-/** Show the full link (and a warning for non-HTTPS sites) before opening it. */
-function confirmOpenLink(link: string) {
-  const isWeb = /^https?:\/\//i.test(link);
-  const domain = isWeb ? link.replace(/^https?:\/\//i, "").split(/[/?#]/)[0] : "";
-  const insecure = /^http:\/\//i.test(link);
-  const message = [
-    domain ? `Website: ${domain}` : null,
-    link,
-    insecure ? "\n⚠️ This link is not secure (no HTTPS). Open only if you trust it." : null,
-  ].filter(Boolean).join("\n");
-  Alert.alert("Open this link?", message, [
-    { text: "Cancel", style: "cancel" },
-    { text: "Copy", onPress: () => { Clipboard.setStringAsync(link).catch(() => {}); } },
-    { text: "Open", onPress: () => { Linking.openURL(link).catch(() => Alert.alert("Can't open link", link)); } },
-  ]);
-}
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({
   uri,
@@ -37,8 +20,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   onPageChanged,
   onError,
   enablePaging = false,
+  jumpTo,
   style,
 }) => {
+  const pdfRef = useRef<any>(null);
   // `react-native-pdf` requires an `http://…` or `file://…` source. content://
   // URIs from Android SAF are copied to cache upstream (see importPdfFromUri).
   const source = useMemo(
@@ -49,9 +34,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     [uri],
   );
 
+  useEffect(() => {
+    if (jumpTo?.page) pdfRef.current?.setPage(jumpTo.page);
+  }, [jumpTo]);
+
   return (
     <View style={[styles.wrap, style]}>
       <Pdf
+        ref={pdfRef}
         source={source}
         password={password}
         trustAllCerts={Platform.OS === "android"}
