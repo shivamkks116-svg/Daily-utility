@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,8 @@ import { pickPdfs, sharePdf, humanBytes, type PickedPdf } from "@/src/utils/pdf/
 import { addRecent } from "@/src/utils/toolkit/recents";
 import { PdfViewer } from "@/src/components/PdfViewer";
 import { PdfSearchSheet } from "@/src/components/PdfSearchSheet";
+import { highlightPdf } from "@/src/utils/pdf";
+import { bookmarkDocKey, listBookmarks, toggleBookmark } from "@/src/utils/pdf/bookmarks";
 
 /**
  * Native PDF Reader.
@@ -36,8 +39,56 @@ export default function PdfReaderScreen() {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [password, setPassword] = useState<string | undefined>(undefined);
-  const [searchTab, setSearchTab] = useState<"search" | "links" | null>(null);
+  const [searchTab, setSearchTab] = useState<"search" | "links" | "bookmarks" | null>(null);
   const [jumpTo, setJumpTo] = useState<{ page: number } | undefined>(undefined);
+  // Highlighted copy of the PDF (null = show original file).
+  const [highlight, setHighlight] = useState<{ uri: string; query: string; matches: number } | null>(null);
+  const [highlighting, setHighlighting] = useState(false);
+  const [pendingPage, setPendingPage] = useState<number | null>(null);
+  const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const docKey = file && numPages ? bookmarkDocKey(file, numPages) : null;
+
+  useEffect(() => {
+    setHighlight(null);
+  }, [file?.uri]);
+
+  useEffect(() => {
+    if (!docKey) { setBookmarks([]); return; }
+    listBookmarks(docKey).then((l) => setBookmarks(l.map((b) => b.page))).catch(() => {});
+  }, [docKey]);
+
+  const onToggleBookmark = async (page: number) => {
+    if (!docKey) return;
+    const next = await toggleBookmark(docKey, page);
+    setBookmarks(next.map((b) => b.page));
+  };
+
+  const onHighlight = async (query: string, page: number) => {
+    if (!file) return;
+    if (highlight?.query.toLowerCase() === query.toLowerCase()) {
+      setJumpTo({ page });
+      setCurrentPage(page);
+      return;
+    }
+    setHighlighting(true);
+    try {
+      const res = await highlightPdf(file.uri, query);
+      setPendingPage(page);
+      setHighlight({ uri: res.uri, query, matches: res.matches });
+    } catch (e: unknown) {
+      // Fall back to a plain jump if highlighting fails.
+      setJumpTo({ page });
+      setCurrentPage(page);
+      Alert.alert("Couldn't highlight", (e as Error)?.message || String(e));
+    } finally {
+      setHighlighting(false);
+    }
+  };
+
+  const clearHighlight = () => {
+    setPendingPage(currentPage);
+    setHighlight(null);
+  };
 
   // Load a PDF shared via an intent.
   useEffect(() => {
@@ -81,6 +132,12 @@ export default function PdfReaderScreen() {
 
   const onLoad = (info: { numberOfPages: number }) => {
     setNumPages(info.numberOfPages);
+    if (pendingPage) {
+      const p = pendingPage;
+      setPendingPage(null);
+      setTimeout(() => { setJumpTo({ page: p }); setCurrentPage(p); }, 150);
+    }
+    if (highlight) return;
     if (file) {
       addRecent({
         kind: "pdf",
@@ -138,13 +195,44 @@ export default function PdfReaderScreen() {
             <Pressable onPress={pick} style={styles.iconBtn}>
               <Ionicons name="folder-open-outline" size={18} color={colors.onSurface} />
             </Pressable>
-            <Pressable onPress={() => sharePdf(file.uri)} style={styles.iconBtn}>
-              <Ionicons name="share-outline" size={18} color={colors.onSurface} />
+            <Pressable
+              testID="pdf-reader-bookmark"
+              onPress={() => onToggleBookmark(currentPage)}
+              onLongPress={() => setSearchTab("bookmarks")}
+              disabled={!docKey}
+              style={styles.iconBtn}
+            >
+              <Ionicons
+                name={bookmarks.includes(currentPage) ? "bookmark" : "bookmark-outline"}
+                size={18}
+                color={bookmarks.includes(currentPage) ? colors.brandPrimary : colors.onSurface}
+              />
             </Pressable>
           </View>
 
+          {highlighting || highlight ? (
+            <View style={styles.hlBar} testID="pdf-highlight-bar">
+              {highlighting ? (
+                <>
+                  <ActivityIndicator size="small" color={colors.brandPrimary} />
+                  <Text style={styles.hlText}>Highlighting matches…</Text>
+                </>
+              ) : highlight ? (
+                <>
+                  <Ionicons name="color-wand" size={16} color={colors.brandPrimary} />
+                  <Text style={styles.hlText} numberOfLines={1}>
+                    &quot;{highlight.query}&quot; · {highlight.matches} match{highlight.matches === 1 ? "" : "es"}
+                  </Text>
+                  <Pressable testID="pdf-highlight-clear" onPress={clearHighlight} hitSlop={8} style={styles.hlClear}>
+                    <Text style={styles.hlClearText}>Clear</Text>
+                  </Pressable>
+                </>
+              ) : null}
+            </View>
+          ) : null}
+
           <PdfViewer
-            uri={file.uri}
+            uri={highlight?.uri || file.uri}
             password={password}
             onLoad={onLoad}
             onPageChanged={(page) => setCurrentPage(page)}
@@ -159,6 +247,9 @@ export default function PdfReaderScreen() {
             initialTab={searchTab || "search"}
             onClose={() => setSearchTab(null)}
             onJump={(page) => { setJumpTo({ page }); setCurrentPage(page); }}
+            onHighlight={onHighlight}
+            bookmarks={bookmarks}
+            onRemoveBookmark={onToggleBookmark}
           />
 
           <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -198,6 +289,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  hlBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    minHeight: 44,
+    backgroundColor: colors.surfaceSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  hlText: { flex: 1, color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  hlClear: { minHeight: 32, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.brandPrimary },
+  hlClearText: { color: colors.onBrandPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
   bottomBar: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,

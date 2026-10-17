@@ -15,25 +15,31 @@ import { readPdfBase64 } from "@/src/utils/pdf";
 import { confirmOpenLink } from "@/src/utils/confirmLink";
 
 type PdfIndex = { pages: { page: number; text: string }[]; links: { page: number; uri: string }[] };
+type Tab = "search" | "links" | "bookmarks";
 type Row =
   | { kind: "goto"; key: string; page: number }
   | { kind: "hit"; key: string; page: number; before: string; match: string; after: string }
-  | { kind: "link"; key: string; page: number; uri: string };
+  | { kind: "link"; key: string; page: number; uri: string }
+  | { kind: "bookmark"; key: string; page: number };
 
 const cache = new Map<string, PdfIndex>();
 const MAX_HITS = 200;
 
 export function PdfSearchSheet({
-  visible, uri, numPages, initialTab = "search", onClose, onJump,
+  visible, uri, numPages, initialTab = "search", onClose, onJump, onHighlight, bookmarks, onRemoveBookmark,
 }: {
   visible: boolean;
   uri: string;
   numPages: number;
-  initialTab?: "search" | "links";
+  initialTab?: Tab;
   onClose: () => void;
   onJump: (page: number) => void;
+  /** Called when a search hit is tapped: highlight `query` and jump to `page`. */
+  onHighlight: (query: string, page: number) => void;
+  bookmarks: number[];
+  onRemoveBookmark: (page: number) => void;
 }) {
-  const [tab, setTab] = useState<"search" | "links">(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState<PdfIndex | null>(cache.get(uri) || null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +68,9 @@ export function PdfSearchSheet({
   }, [visible, uri]);
 
   const rows = useMemo<Row[]>(() => {
+    if (tab === "bookmarks") {
+      return bookmarks.map((p) => ({ kind: "bookmark", key: `b${p}`, page: p }));
+    }
     if (tab === "links") {
       return (index?.links || []).map((l, i) => ({ kind: "link", key: `l${i}`, page: l.page, uri: l.uri }));
     }
@@ -91,7 +100,7 @@ export function PdfSearchSheet({
       }
     }
     return out;
-  }, [tab, query, index, numPages]);
+  }, [tab, query, index, numPages, bookmarks]);
 
   const hitCount = rows.filter((r) => r.kind === "hit").length;
 
@@ -101,6 +110,22 @@ export function PdfSearchSheet({
         <Pressable testID="pdf-search-goto" style={styles.row} onPress={() => { onJump(item.page); onClose(); }}>
           <Ionicons name="arrow-forward-circle" size={22} color={colors.brandPrimary} />
           <Text style={styles.rowTitle}>Go to page {item.page}</Text>
+        </Pressable>
+      );
+    }
+    if (item.kind === "bookmark") {
+      return (
+        <Pressable testID="pdf-bookmark-row" style={styles.row} onPress={() => { onJump(item.page); onClose(); }}>
+          <Ionicons name="bookmark" size={20} color={colors.brandPrimary} />
+          <Text style={[styles.rowTitle, { flex: 1 }]}>Page {item.page}</Text>
+          <Pressable
+            testID="pdf-bookmark-remove"
+            hitSlop={8}
+            onPress={() => onRemoveBookmark(item.page)}
+            style={styles.pageBtn}
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.onSurface} />
+          </Pressable>
         </Pressable>
       );
     }
@@ -119,7 +144,7 @@ export function PdfSearchSheet({
       );
     }
     return (
-      <Pressable testID="pdf-search-hit" style={styles.row} onPress={() => { onJump(item.page); onClose(); }}>
+      <Pressable testID="pdf-search-hit" style={styles.row} onPress={() => { onHighlight(query.trim(), item.page); onClose(); }}>
         <View style={styles.pageBadge}><Text style={styles.pageBadgeText}>{item.page}</Text></View>
         <Text style={styles.snippet} numberOfLines={2}>
           {item.before}<Text style={styles.match}>{item.match}</Text>{item.after}
@@ -132,6 +157,8 @@ export function PdfSearchSheet({
     <View style={styles.center}><ActivityIndicator color={colors.brandPrimary} /><Text style={styles.hint}>Reading PDF text…</Text></View>
   ) : err ? (
     <View style={styles.center}><Text style={styles.err}>{err}</Text></View>
+  ) : tab === "bookmarks" ? (
+    <View style={styles.center}><Text style={styles.hint}>No bookmarks yet. Tap the bookmark icon on any page to save it.</Text></View>
   ) : tab === "links" ? (
     <View style={styles.center}><Text style={styles.hint}>No links found in this PDF.</Text></View>
   ) : query.trim().length >= 2 ? (
@@ -174,7 +201,7 @@ export function PdfSearchSheet({
         </View>
 
         <View style={styles.tabs}>
-          {(["search", "links"] as const).map((t) => (
+          {(["search", "links", "bookmarks"] as const).map((t) => (
             <Pressable
               key={t}
               testID={`pdf-tab-${t}`}
@@ -182,7 +209,9 @@ export function PdfSearchSheet({
               style={[styles.tab, tab === t && styles.tabActive]}
             >
               <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                {t === "search" ? (query.trim().length >= 2 && index ? `Results (${hitCount})` : "Search") : `Links (${index?.links.length ?? 0})`}
+                {t === "search"
+                  ? (query.trim().length >= 2 && index ? `Results (${hitCount})` : "Search")
+                  : t === "links" ? `Links (${index?.links.length ?? 0})` : `Bookmarks (${bookmarks.length})`}
               </Text>
             </Pressable>
           ))}

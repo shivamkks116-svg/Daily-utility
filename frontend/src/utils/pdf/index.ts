@@ -47,6 +47,21 @@ export async function readPdfBase64(uri: string): Promise<string> {
   return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }
 
+/** Server-side highlight of every `query` match. Returns a cached copy of the PDF. */
+export async function highlightPdf(uri: string, query: string): Promise<{ uri: string; matches: number }> {
+  const { api } = await import("@/src/api/client");
+  const file_base64 = await readPdfBase64(uri);
+  const res = await api<{ file_base64: string; matches: number }>("/pdf/highlight", {
+    method: "POST",
+    body: { file_base64, query },
+  });
+  await ensureCache();
+  const dest = CACHE + uniqueName("highlight");
+  await FileSystem.writeAsStringAsync(dest, res.file_base64, { encoding: FileSystem.EncodingType.Base64 });
+  return { uri: dest, matches: res.matches };
+}
+
+
 export async function getPdfSize(uri: string): Promise<number> {
   const info = await FileSystem.getInfoAsync(uri, { size: true });
   return (info as any).size ?? 0;

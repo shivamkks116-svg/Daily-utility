@@ -1080,3 +1080,5 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## PDF Search + Links
 - POST /api/pdf/index returns per-page text + links (annotations + URLs in text). src/components/PdfSearchSheet.tsx: word search with snippets, page-number jump, Links tab (confirmOpenLink). PdfViewer jumpTo prop via ref.setPage.
+- Search highlight: POST /api/pdf/highlight (PyMuPDF highlight annots) -> reader swaps to highlighted cached copy, jumps to page after load, 'Clear' bar restores original.
+- Bookmarks: src/utils/pdf/bookmarks.ts (key size:numPages), bookmark icon in reader meta bar (replaced share icon; long-press opens list), Bookmarks tab in PdfSearchSheet.

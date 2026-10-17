@@ -1478,6 +1478,41 @@ async def pdf_index(payload: PDFFileIn, authorization: Optional[str] = Header(de
     return {"pages": pages, "links": links}
 
 
+class PDFHighlightIn(PDFFileIn):
+    query: str = Field(min_length=1, max_length=100)
+
+
+@api_router.post("/pdf/highlight")
+async def pdf_highlight(payload: PDFHighlightIn, authorization: Optional[str] = Header(default=None)):
+    """Return a copy of the PDF with every match of `query` highlighted."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    q = payload.query.strip()
+    count, first_page = 0, None
+    try:
+        for i, page in enumerate(doc):
+            rects = page.search_for(q)
+            if not rects:
+                continue
+            if first_page is None:
+                first_page = i + 1
+            for r in rects:
+                annot = page.add_highlight_annot(r)
+                annot.set_colors(stroke=(1, 0.85, 0.1))
+                annot.update()
+                count += 1
+        out = doc.tobytes(garbage=0, deflate=True)
+    finally:
+        doc.close()
+    return {"file_base64": _b64.b64encode(out).decode(), "matches": count, "first_page": first_page}
+
+
 @api_router.post("/pdf/info")
 async def pdf_info(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
     await require_user(authorization)
