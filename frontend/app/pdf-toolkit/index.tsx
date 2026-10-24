@@ -43,6 +43,7 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
       { key: "to-docx", label: "PDF → Word", desc: "Extract text to a .docx file", icon: "document", route: "/pdf-toolkit/to-docx" },
       { key: "word-reader", label: "Word Reader", desc: "Open .docx / .doc for reading", icon: "document-text", route: "/pdf-toolkit/word-reader" },
       { key: "word-to-pdf", label: "Word → PDF", desc: "Convert .docx / .doc into a PDF", icon: "document-text", route: "/pdf-toolkit/word-to-pdf" },
+      { key: "excel-to-pdf", label: "Excel → PDF", desc: "Convert .xlsx / .xls / .csv into a PDF", icon: "grid", route: "/pdf-toolkit/excel-to-pdf" },
     ],
   },
   {

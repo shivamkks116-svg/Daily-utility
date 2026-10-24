@@ -1083,3 +1083,4 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - Search highlight: POST /api/pdf/highlight (PyMuPDF highlight annots) -> reader swaps to highlighted cached copy, jumps to page after load, 'Clear' bar restores original.
 - Bookmarks: src/utils/pdf/bookmarks.ts (key size:numPages), bookmark icon in reader meta bar (replaced share icon; long-press opens list), Bookmarks tab in PdfSearchSheet.
 - PDF link taps: scripts/fix-rnpdf-links.js (postinstall) bumps io.legere:pdfiumandroid 1.0.32 -> 1.0.34 (react-native-pdf issue #983). v1.0.5 / versionCode 9.
+- Excel → PDF: POST /api/xlsx/to-pdf (openpyxl/xlrd/csv, gridded A4 landscape, header repeat, column chunking). Screen app/pdf-toolkit/excel-to-pdf.tsx, helpers src/utils/xlsx/helpers.ts, listed in PDF toolkit Convert section.

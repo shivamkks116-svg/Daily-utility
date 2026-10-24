@@ -2079,6 +2079,144 @@ except ImportError:
     _docx = None  # type: ignore
 
 
+class XlsxToPDFIn(BaseModel):
+    file_base64: str = Field(..., description="XLSX / XLS / CSV bytes as base64")
+    title: Optional[str] = None
+
+
+def _read_spreadsheet(data: bytes, name: str) -> List[tuple]:
+    """Return [(sheet_name, rows[list[str]])] for xlsx / xls / csv."""
+    from io import BytesIO, StringIO
+    lower = (name or "").lower()
+
+    def fmt(v):
+        if v is None:
+            return ""
+        if isinstance(v, float) and v.is_integer():
+            return str(int(v))
+        if isinstance(v, datetime):
+            return v.strftime("%Y-%m-%d") if (v.hour, v.minute, v.second) == (0, 0, 0) else v.strftime("%Y-%m-%d %H:%M")
+        return str(v)
+
+    if lower.endswith(".csv") or not (data[:2] == b"PK" or data[:4] == b"\xd0\xcf\x11\xe0"):
+        import csv
+        text = data.decode("utf-8-sig", errors="replace")
+        try:
+            dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
+        except Exception:
+            dialect = csv.excel
+        rows = [list(r) for r in csv.reader(StringIO(text), dialect)]
+        return [(name.rsplit(".", 1)[0] or "Sheet1", rows)]
+    if data[:4] == b"\xd0\xcf\x11\xe0":
+        import xlrd
+        book = xlrd.open_workbook(file_contents=data)
+        out = []
+        for sh in book.sheets():
+            rows = []
+            for r in range(sh.nrows):
+                row = []
+                for c in range(sh.ncols):
+                    cell = sh.cell(r, c)
+                    if cell.ctype == xlrd.XL_CELL_DATE:
+                        try:
+                            row.append(fmt(xlrd.xldate.xldate_as_datetime(cell.value, book.datemode)))
+                            continue
+                        except Exception:
+                            pass
+                    row.append(fmt(cell.value))
+                rows.append(row)
+            out.append((sh.name, rows))
+        return out
+    import openpyxl
+    wb = openpyxl.load_workbook(BytesIO(data), read_only=True, data_only=True)
+    out = []
+    for ws in wb.worksheets:
+        rows = [[fmt(v) for v in r] for r in ws.iter_rows(values_only=True)]
+        out.append((ws.title, rows))
+    wb.close()
+    return out
+
+
+@api_router.post("/xlsx/to-pdf")
+async def xlsx_to_pdf(payload: XlsxToPDFIn, authorization: Optional[str] = Header(default=None)):
+    """Render every sheet of an Excel / CSV file as a gridded table PDF (A4 landscape)."""
+    await require_user(authorization)
+    if fitz is None:
+        raise HTTPException(500, "PDF service unavailable")
+    data = _decode_b64_bytes(payload.file_base64)
+    try:
+        sheets = _read_spreadsheet(data, payload.title or "")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open spreadsheet: {str(e)[:120]}")
+
+    page_w, page_h = 842, 595
+    mx, my = 28, 36
+    fs, row_h, pad = 8, 14, 3
+    max_col_w = 220
+    out = fitz.open()
+    pages = 0
+
+    def clip(text: str, width: float) -> str:
+        if fitz.get_text_length(text, fontname="helv", fontsize=fs) <= width:
+            return text
+        while text and fitz.get_text_length(text + "…", fontname="helv", fontsize=fs) > width:
+            text = text[:-1]
+        return text + "…"
+
+    for sheet_name, rows in sheets:
+        # Trim fully empty trailing rows / columns.
+        rows = [r for r in rows if any(str(c).strip() for c in r)]
+        if not rows:
+            continue
+        ncols = max(len(r) for r in rows)
+        while ncols > 0 and not any(len(r) >= ncols and str(r[ncols - 1]).strip() for r in rows):
+            ncols -= 1
+        rows = [(list(r) + [""] * ncols)[:ncols] for r in rows[:20000]]
+        widths = []
+        for c in range(ncols):
+            longest = max(fitz.get_text_length(str(r[c])[:60], fontname="helv", fontsize=fs) for r in rows[:500])
+            widths.append(min(max_col_w, max(30, longest + 2 * pad)))
+        # Split columns into chunks that fit the page width.
+        chunks, cur, cur_w = [], [], 0
+        for c, w in enumerate(widths):
+            if cur and cur_w + w > page_w - 2 * mx:
+                chunks.append(cur)
+                cur, cur_w = [], 0
+            cur.append(c)
+            cur_w += w
+        if cur:
+            chunks.append(cur)
+        header, body = rows[0], rows[1:]
+        per_page = int((page_h - 2 * my - 20) // row_h) - 1
+        for ci, cols in enumerate(chunks):
+            for start in range(0, max(1, len(body)), max(1, per_page)):
+                page = out.new_page(width=page_w, height=page_h)
+                pages += 1
+                label = sheet_name + (f"  (columns {cols[0] + 1}–{cols[-1] + 1})" if len(chunks) > 1 else "")
+                page.insert_text((mx, my - 10), label, fontname="hebo", fontsize=11, color=(0.12, 0.37, 0.25))
+                y = my
+                for ri, row in enumerate([header] + body[start:start + per_page]):
+                    x = mx
+                    for c in cols:
+                        rect = fitz.Rect(x, y, x + widths[c], y + row_h)
+                        if ri == 0:
+                            page.draw_rect(rect, color=(0.6, 0.6, 0.6), fill=(0.88, 0.94, 0.9), width=0.5)
+                        else:
+                            page.draw_rect(rect, color=(0.75, 0.75, 0.75), width=0.4)
+                        txt = clip(str(row[c]), widths[c] - 2 * pad)
+                        if txt:
+                            page.insert_text((x + pad, y + row_h - 4), txt,
+                                             fontname="hebo" if ri == 0 else "helv", fontsize=fs)
+                        x += widths[c]
+                    y += row_h
+                page.insert_text((page_w - mx - 40, page_h - 16), f"{pages}", fontname="helv", fontsize=7, color=(0.5, 0.5, 0.5))
+    if pages == 0:
+        raise HTTPException(400, "The spreadsheet is empty.")
+    pdf_bytes = out.tobytes(deflate=True)
+    out.close()
+    return {"file_base64": _b64.b64encode(pdf_bytes).decode(), "size": len(pdf_bytes), "pages": pages}
+
+
 class DocxToPDFIn(BaseModel):
     file_base64: str = Field(..., description="DOCX file bytes as base64")
     title: Optional[str] = None
