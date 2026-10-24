@@ -5,7 +5,7 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState, ProgressBanner } from "@/src/components/toolkit/Primitives";
@@ -16,7 +16,12 @@ import { addRecent } from "@/src/utils/toolkit/recents";
 
 export default function ExcelToPdfScreen() {
   const router = useRouter();
-  const [file, setFile] = useState<PickedSheet | null>(null);
+  const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string }>();
+  const [file, setFile] = useState<PickedSheet | null>(() =>
+    params.sharedUri
+      ? { uri: String(params.sharedUri), name: String(params.sharedName || "Shared.xlsx"), size: Number(params.sharedSize || 0) }
+      : null,
+  );
   const [busy, setBusy] = useState(false);
 
   const pick = async () => {

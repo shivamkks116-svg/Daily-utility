@@ -16,6 +16,43 @@ const SHEET_MIMES = [
 ];
 const MAX_BYTES = 25 * 1024 * 1024;
 
+/**
+ * Import a shared content:// / file:// URI and decide if it's a spreadsheet.
+ * XLSX and DOCX are both zips, so we look inside for `xl/workbook.xml`.
+ * Legacy .xls / .csv are detected by file extension.
+ */
+export async function importSheetFromUri(rawUri: string): Promise<PickedSheet | null> {
+  const rawName = decodeURIComponent((rawUri.split("/").pop() || "shared").split("?")[0]);
+  const dest = `${FileSystem.cacheDirectory}shared-${Date.now()}-${rawName.replace(/[^\w.\-]/g, "_")}`;
+  try {
+    await FileSystem.copyAsync({ from: rawUri, to: dest });
+  } catch {
+    try {
+      const b64 = await FileSystem.readAsStringAsync(rawUri, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(dest, b64, { encoding: FileSystem.EncodingType.Base64 });
+    } catch {
+      return null;
+    }
+  }
+  let name = rawName;
+  if (!/\.(xlsx|xlsm|xls|csv)$/i.test(name)) {
+    try {
+      const head = await FileSystem.readAsStringAsync(dest, { encoding: FileSystem.EncodingType.Base64, length: 4, position: 0 });
+      if (!head.startsWith("UEs")) return null; // not a zip → not xlsx
+      const JSZip = (await import("jszip")).default;
+      const b64 = await FileSystem.readAsStringAsync(dest, { encoding: FileSystem.EncodingType.Base64 });
+      const zip = await JSZip.loadAsync(b64, { base64: true });
+      if (!zip.file("xl/workbook.xml")) return null;
+      name = `${name || "Spreadsheet"}.xlsx`;
+    } catch {
+      return null;
+    }
+  }
+  const info = await FileSystem.getInfoAsync(dest);
+  const size = info.exists && !info.isDirectory ? (info as { size: number }).size : 0;
+  return { uri: dest, name, size };
+}
+
 export async function pickSpreadsheet(): Promise<PickedSheet | null> {
   let res: DocumentPicker.DocumentPickerResult;
   try {

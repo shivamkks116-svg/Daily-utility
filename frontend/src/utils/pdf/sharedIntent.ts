@@ -36,6 +36,7 @@ import { router, useRootNavigationState } from "expo-router";
 import { importPdfFromUri } from "@/src/utils/pdf/helpers";
 import { importImageFromUri } from "@/src/utils/image/import";
 import { importDocxFromUri } from "@/src/utils/docx/helpers";
+import { importSheetFromUri } from "@/src/utils/xlsx/helpers";
 
 const SCHEME = "dailyhubai://";
 
@@ -91,6 +92,16 @@ async function routeSharedUri(uri: string): Promise<boolean> {
         sharedName: img.name,
         sharedSize: String(img.size),
       },
+    });
+    return true;
+  }
+
+  // Spreadsheet? Must run before DOCX — XLSX is also a zip (PK magic).
+  const sheet = await importSheetFromUri(uri);
+  if (sheet) {
+    router.replace({
+      pathname: "/pdf-toolkit/excel-to-pdf",
+      params: { sharedUri: sheet.uri, sharedName: sheet.name, sharedSize: String(sheet.size) },
     });
     return true;
   }

@@ -27,3 +27,14 @@ export async function toggleBookmark(docKey: string, page: number): Promise<PdfB
   await storage.setItem(key(docKey), JSON.stringify(next));
   return next;
 }
+
+// -------- Resume reading --------
+const lastKey = (docKey: string) => `pdf_last_page:${docKey}`;
+
+export async function getLastPage(docKey: string): Promise<number> {
+  return Number(await storage.getItem<string>(lastKey(docKey), "0")) || 0;
+}
+
+export async function setLastPage(docKey: string, page: number) {
+  await storage.setItem(lastKey(docKey), String(page));
+}

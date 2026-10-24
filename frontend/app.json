@@ -59,6 +59,38 @@
             {
               "scheme": "file",
               "mimeType": "application/msword"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/vnd.ms-excel"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "application/vnd.ms-excel"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "text/csv"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "text/csv"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "text/comma-separated-values"
+            },
+            {
+              "scheme": "file",
+              "mimeType": "text/comma-separated-values"
             }
           ]
         },
@@ -98,6 +130,36 @@
               "scheme": "file",
               "host": "*",
               "pathPattern": ".*\\.doc"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.xlsx"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.xls"
+            },
+            {
+              "scheme": "content",
+              "host": "*",
+              "pathPattern": ".*\\.csv"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.xlsx"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.xls"
+            },
+            {
+              "scheme": "file",
+              "host": "*",
+              "pathPattern": ".*\\.csv"
             }
           ]
         },
@@ -118,6 +180,18 @@
             },
             {
               "mimeType": "image/*"
+            },
+            {
+              "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            {
+              "mimeType": "application/vnd.ms-excel"
+            },
+            {
+              "mimeType": "text/csv"
+            },
+            {
+              "mimeType": "text/comma-separated-values"
             }
           ]
         },

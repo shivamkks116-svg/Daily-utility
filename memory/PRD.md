@@ -1084,3 +1084,5 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - Bookmarks: src/utils/pdf/bookmarks.ts (key size:numPages), bookmark icon in reader meta bar (replaced share icon; long-press opens list), Bookmarks tab in PdfSearchSheet.
 - PDF link taps: scripts/fix-rnpdf-links.js (postinstall) bumps io.legere:pdfiumandroid 1.0.32 -> 1.0.34 (react-native-pdf issue #983). v1.0.5 / versionCode 9.
 - Excel → PDF: POST /api/xlsx/to-pdf (openpyxl/xlrd/csv, gridded A4 landscape, header repeat, column chunking). Screen app/pdf-toolkit/excel-to-pdf.tsx, helpers src/utils/xlsx/helpers.ts, listed in PDF toolkit Convert section.
+- Shared Excel (.xlsx/.xls/.csv) intents -> excel-to-pdf (importSheetFromUri, checks xl/workbook.xml before DOCX). Intent filters added in app.json.
+- Resume reading: reader saves last page per doc (pdf_last_page:size:numPages) and jumps on load.

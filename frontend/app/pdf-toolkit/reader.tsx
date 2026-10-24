@@ -17,7 +17,7 @@ import { addRecent } from "@/src/utils/toolkit/recents";
 import { PdfViewer } from "@/src/components/PdfViewer";
 import { PdfSearchSheet } from "@/src/components/PdfSearchSheet";
 import { highlightPdf } from "@/src/utils/pdf";
-import { bookmarkDocKey, listBookmarks, toggleBookmark } from "@/src/utils/pdf/bookmarks";
+import { bookmarkDocKey, getLastPage, listBookmarks, setLastPage, toggleBookmark } from "@/src/utils/pdf/bookmarks";
 
 /**
  * Native PDF Reader.
@@ -139,6 +139,12 @@ export default function PdfReaderScreen() {
     }
     if (highlight) return;
     if (file) {
+      const key = bookmarkDocKey(file, info.numberOfPages);
+      getLastPage(key).then((p) => {
+        if (p > 1 && p <= info.numberOfPages) {
+          setTimeout(() => { setJumpTo({ page: p }); setCurrentPage(p); }, 150);
+        }
+      }).catch(() => {});
       addRecent({
         kind: "pdf",
         uri: file.uri,
@@ -235,7 +241,10 @@ export default function PdfReaderScreen() {
             uri={highlight?.uri || file.uri}
             password={password}
             onLoad={onLoad}
-            onPageChanged={(page) => setCurrentPage(page)}
+            onPageChanged={(page) => {
+              setCurrentPage(page);
+              if (docKey) void setLastPage(docKey, page);
+            }}
             onError={onError}
             jumpTo={jumpTo}
           />
