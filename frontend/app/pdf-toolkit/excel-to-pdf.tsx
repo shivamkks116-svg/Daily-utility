@@ -13,6 +13,7 @@ import { InstantOverlay } from "@/src/components/InstantOverlay";
 import { pickSpreadsheet, spreadsheetToPdf, type PickedSheet } from "@/src/utils/xlsx/helpers";
 import { humanBytes } from "@/src/utils/pdf/helpers";
 import { addRecent } from "@/src/utils/toolkit/recents";
+import { SheetPreview } from "@/src/components/SheetPreview";
 
 export default function ExcelToPdfScreen() {
   const router = useRouter();
@@ -73,6 +74,7 @@ export default function ExcelToPdfScreen() {
               </View>
             </View>
             {busy ? <ProgressBanner label="Converting…" /> : null}
+            <SheetPreview uri={file.uri} name={file.name} />
             <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
               <PrimaryButton icon="sync" label="Convert to PDF" onPress={convert} loading={busy} />
               <SecondaryButton icon="refresh" label="Pick another file" onPress={pick} />

@@ -207,9 +207,50 @@ export default function AdminScreen() {
           </Pressable>
         </View>
 
+        <InstallSourcesCard />
         <BroadcastCard />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+type SourceDay = { day: string; meta: number; google_ads: number; organic: number; other: number };
+
+function InstallSourcesCard() {
+  const [data, setData] = useState<{ days: SourceDay[]; totals: Record<string, number> } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    api<{ days: SourceDay[]; totals: Record<string, number> }>("/admin/install-sources?days=14")
+      .then(setData)
+      .catch((e) => setErr((e as Error)?.message || "Failed to load"));
+  }, []);
+  const max = Math.max(1, ...(data?.days || []).map((d) => d.meta));
+  return (
+    <View style={styles.card} testID="admin-install-sources">
+      <View style={styles.cardHead}>
+        <View style={styles.cardIcon}>
+          <Ionicons name="logo-facebook" size={20} color={colors.brandPrimary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>New users from Meta ads</Text>
+          <Text style={styles.cardSub}>
+            Last 14 days · Meta {data?.totals.meta ?? 0} · Google Ads {data?.totals.google_ads ?? 0} · Organic {data?.totals.organic ?? 0}
+          </Text>
+        </View>
+      </View>
+      {err ? <Text style={styles.metaText}>{err}</Text> : null}
+      {!data && !err ? <ActivityIndicator color={colors.brandPrimary} /> : null}
+      {(data?.days || []).map((d) => (
+        <View key={d.day} style={styles.srcRow}>
+          <Text style={styles.srcDay}>{d.day.slice(5)}</Text>
+          <View style={styles.srcTrack}>
+            <View style={[styles.srcFill, { width: `${(d.meta / max) * 100}%` }]} />
+          </View>
+          <Text style={styles.srcNum}>{d.meta}</Text>
+          <Text style={styles.srcOther}>/ {d.meta + d.google_ads + d.organic + d.other}</Text>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -374,6 +415,12 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   cardSub: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2, lineHeight: 16 },
   metaText: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs },
+  srcRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 22 },
+  srcDay: { width: 44, color: colors.onSurfaceTertiary, fontSize: fontSize.xs },
+  srcTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: "hidden" },
+  srcFill: { height: 8, borderRadius: 4, backgroundColor: colors.brandPrimary },
+  srcNum: { width: 28, textAlign: "right", color: colors.onSurface, fontSize: fontSize.xs, fontWeight: fontWeight.bold },
+  srcOther: { width: 36, color: colors.onSurfaceTertiary, fontSize: fontSize.xs },
   input: {
     color: colors.onSurface,
     fontSize: fontSize.md,

@@ -17,7 +17,7 @@ import { addRecent } from "@/src/utils/toolkit/recents";
 import { PdfViewer } from "@/src/components/PdfViewer";
 import { PdfSearchSheet } from "@/src/components/PdfSearchSheet";
 import { highlightPdf } from "@/src/utils/pdf";
-import { bookmarkDocKey, getLastPage, listBookmarks, setLastPage, toggleBookmark } from "@/src/utils/pdf/bookmarks";
+import { bookmarkDocKey, getLastPage, listBookmarks, setLastPage, setProgress, toggleBookmark } from "@/src/utils/pdf/bookmarks";
 
 /**
  * Native PDF Reader.
@@ -244,6 +244,7 @@ export default function PdfReaderScreen() {
             onPageChanged={(page) => {
               setCurrentPage(page);
               if (docKey) void setLastPage(docKey, page);
+              if (file) void setProgress(file.uri, page, numPages);
             }}
             onError={onError}
             jumpTo={jumpTo}

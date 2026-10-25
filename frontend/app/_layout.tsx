@@ -18,12 +18,15 @@ import { bootstrapTheme } from "@/src/theme/apply";
 import * as Notifications from "expo-notifications";
 import { PushSetup } from "@/src/components/PushSetup";
 import { initializeMetaEvents, logCompletedRegistration } from "@/src/analytics/metaEvents";
+import { reportInstallSource } from "@/src/analytics/installSource";
 
 initializeMetaEvents();
 
 function MetaEventsSetup({ userId, provider }: { userId?: string; provider?: string }) {
   useEffect(() => {
-    if (userId) void logCompletedRegistration(userId, provider || "unknown");
+    if (!userId) return;
+    void logCompletedRegistration(userId, provider || "unknown");
+    void reportInstallSource();
   }, [userId, provider]);
   return null;
 }

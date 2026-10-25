@@ -9,6 +9,7 @@ import { listRecents, listFavorites, toggleFavorite, formatBytes, formatDate, ty
 import { PdfUrlImportModal } from "@/src/components/PdfUrlImportModal";
 import type { PickedPdf } from "@/src/utils/pdf/helpers";
 import { useSubscription } from "@/src/subscription/RevenueCat";
+import { getProgress } from "@/src/utils/pdf/bookmarks";
 
 // Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
 const PREMIUM_TOOLS = new Set(["compress", "protect", "sign", "fill-form", "watermark", "pagenums", "to-docx"]);
@@ -44,6 +45,8 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
       { key: "word-reader", label: "Word Reader", desc: "Open .docx / .doc for reading", icon: "document-text", route: "/pdf-toolkit/word-reader" },
       { key: "word-to-pdf", label: "Word → PDF", desc: "Convert .docx / .doc into a PDF", icon: "document-text", route: "/pdf-toolkit/word-to-pdf" },
       { key: "excel-to-pdf", label: "Excel → PDF", desc: "Convert .xlsx / .xls / .csv into a PDF", icon: "grid", route: "/pdf-toolkit/excel-to-pdf" },
+      { key: "ppt-to-pdf", label: "PowerPoint → PDF", desc: "Turn .pptx slides into a PDF", icon: "easel", route: "/pdf-toolkit/convert/ppt-to-pdf" },
+      { key: "pdf-to-excel", label: "PDF → Excel", desc: "Extract tables into an .xlsx file", icon: "grid-outline", route: "/pdf-toolkit/convert/pdf-to-excel" },
     ],
   },
   {
@@ -238,6 +241,11 @@ export default function PdfToolkitHub() {
 }
 
 function RecentRow({ r, onOpen, onDelete }: { r: RecentEntry; onOpen: () => void; onDelete: () => void }) {
+  const [progress, setProgress] = useState<{ page: number; total: number } | null>(null);
+  useEffect(() => {
+    getProgress(r.uri).then(setProgress).catch(() => {});
+  }, [r.uri]);
+  const pct = progress ? Math.min(100, Math.round((progress.page / progress.total) * 100)) : 0;
   return (
     <Pressable onPress={onOpen} style={styles.recentRow}>
       <View style={styles.recentIcon}>
@@ -250,6 +258,16 @@ function RecentRow({ r, onOpen, onDelete }: { r: RecentEntry; onOpen: () => void
           {r.size ? formatBytes(r.size) + " · " : ""}
           {formatDate(r.createdAt)}
         </Text>
+        {progress ? (
+          <View style={styles.progressRow} testID="recent-progress">
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${pct}%` }]} />
+            </View>
+            <Text style={styles.progressText}>
+              {pct >= 100 ? "Finished" : `Page ${progress.page}/${progress.total} · ${pct}%`}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <Pressable onPress={onDelete} hitSlop={10} style={styles.recentAction}>
         <Ionicons name="trash-outline" size={18} color={colors.onSurfaceTertiary} />
@@ -273,6 +291,10 @@ const styles = StyleSheet.create({
   searchInput: { color: colors.onSurfaceTertiary, fontSize: fontSize.md, flex: 1 },
   sectionTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.bold, marginBottom: spacing.sm, paddingHorizontal: spacing.lg },
   favRow: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6 },
+  progressTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: "hidden" },
+  progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.brandPrimary },
+  progressText: { color: colors.onSurfaceTertiary, fontSize: 10, fontWeight: fontWeight.semibold },
   favChip: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 8 },
   favChipText: { color: colors.onBrandTertiary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
   grid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: spacing.lg - spacing.xs / 2 },

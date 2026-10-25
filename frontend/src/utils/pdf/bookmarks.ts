@@ -38,3 +38,17 @@ export async function getLastPage(docKey: string): Promise<number> {
 export async function setLastPage(docKey: string, page: number) {
   await storage.setItem(lastKey(docKey), String(page));
 }
+
+// -------- Reading progress (keyed by file uri, used by Recents) --------
+const progKey = (uri: string) => `pdf_progress:${uri}`;
+
+export async function setProgress(uri: string, page: number, total: number) {
+  if (!total) return;
+  await storage.setItem(progKey(uri), `${page}/${total}`);
+}
+
+export async function getProgress(uri: string): Promise<{ page: number; total: number } | null> {
+  const raw = await storage.getItem<string>(progKey(uri), "");
+  const [p, t] = (raw || "").split("/").map(Number);
+  return p && t ? { page: p, total: t } : null;
+}

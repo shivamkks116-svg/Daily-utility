@@ -2217,6 +2217,195 @@ async def xlsx_to_pdf(payload: XlsxToPDFIn, authorization: Optional[str] = Heade
     return {"file_base64": _b64.b64encode(pdf_bytes).decode(), "size": len(pdf_bytes), "pages": pages}
 
 
+@api_router.post("/xlsx/preview")
+async def xlsx_preview(payload: XlsxToPDFIn, authorization: Optional[str] = Header(default=None)):
+    """First 200 rows × 30 columns of every sheet, for in-app table preview."""
+    await require_user(authorization)
+    try:
+        sheets = _read_spreadsheet(_decode_b64_bytes(payload.file_base64), payload.title or "")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open spreadsheet: {str(e)[:120]}")
+    out = []
+    for name, rows in sheets:
+        rows = [r for r in rows if any(str(c).strip() for c in r)]
+        out.append({
+            "name": name,
+            "total_rows": len(rows),
+            "rows": [[str(c)[:80] for c in r[:30]] for r in rows[:200]],
+        })
+    return {"sheets": out}
+
+
+@api_router.post("/pdf/to-xlsx")
+async def pdf_to_xlsx(payload: PDFFileIn, authorization: Optional[str] = Header(default=None)):
+    """Extract tables from each PDF page into Excel sheets (falls back to text lines)."""
+    await require_user(authorization)
+    import openpyxl
+    from io import BytesIO
+    try:
+        doc = fitz.open(stream=_decode_b64_bytes(payload.file_base64), filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    tables_found = 0
+    try:
+        for i, page in enumerate(doc):
+            if i >= 300:
+                break
+            try:
+                tables = list(page.find_tables().tables)
+            except Exception:
+                tables = []
+            if tables:
+                for ti, t in enumerate(tables):
+                    ws = wb.create_sheet(f"P{i + 1}" + (f"-T{ti + 1}" if len(tables) > 1 else ""))
+                    for row in t.extract():
+                        ws.append([("" if c is None else str(c)) for c in row])
+                    tables_found += 1
+            else:
+                lines = [l for l in (page.get_text("text") or "").splitlines() if l.strip()]
+                if lines:
+                    ws = wb.create_sheet(f"P{i + 1}")
+                    for l in lines:
+                        ws.append([c.strip() for c in _re.split(r"\s{2,}|\t", l.strip())])
+    finally:
+        doc.close()
+    if not wb.worksheets:
+        raise HTTPException(400, "No text or tables found in this PDF (it may be a scanned image).")
+    buf = BytesIO()
+    wb.save(buf)
+    data = buf.getvalue()
+    return {"file_base64": _b64.b64encode(data).decode(), "size": len(data), "tables": tables_found, "sheets": len(wb.worksheets)}
+
+
+@api_router.post("/pptx/to-pdf")
+async def pptx_to_pdf(payload: XlsxToPDFIn, authorization: Optional[str] = Header(default=None)):
+    """Render each PowerPoint slide (text boxes + pictures) onto a 16:9 PDF page."""
+    await require_user(authorization)
+    from io import BytesIO
+    from pptx import Presentation
+    from pptx.util import Emu
+    try:
+        prs = Presentation(BytesIO(_decode_b64_bytes(payload.file_base64)))
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PowerPoint (.pptx only): {str(e)[:120]}")
+    sw, sh = int(prs.slide_width or Emu(12192000)), int(prs.slide_height or Emu(6858000))
+    pw = 960.0
+    ph = pw * sh / sw
+    k = pw / sw
+    out = fitz.open()
+
+    def draw_shape(page, shp, ox=0, oy=0):
+        if shp.shape_type == 6 and hasattr(shp, "shapes"):  # group
+            for s in shp.shapes:
+                draw_shape(page, s, ox, oy)
+            return
+        if shp.left is None or shp.width is None:
+            return
+        rect = fitz.Rect((shp.left + ox) * k, (shp.top + oy) * k, (shp.left + ox + shp.width) * k, (shp.top + oy + shp.height) * k)
+        if getattr(shp, "image", None) is not None and shp.shape_type == 13:
+            try:
+                page.insert_image(rect, stream=shp.image.blob, keep_proportion=True)
+            except Exception:
+                pass
+            return
+        if getattr(shp, "has_table", False) and shp.has_table:
+            rows = shp.table.rows
+            n = max(1, len(rows))
+            rh = rect.height / n
+            for ri, row in enumerate(rows):
+                cells = list(row.cells)
+                cw = rect.width / max(1, len(cells))
+                for ci, cell in enumerate(cells):
+                    r = fitz.Rect(rect.x0 + ci * cw, rect.y0 + ri * rh, rect.x0 + (ci + 1) * cw, rect.y0 + (ri + 1) * rh)
+                    page.draw_rect(r, color=(0.6, 0.6, 0.6), width=0.5)
+                    page.insert_textbox(r + (3, 2, -3, -2), cell.text, fontsize=9, fontname="helv")
+            return
+        if getattr(shp, "has_text_frame", False) and shp.has_text_frame and shp.text_frame.text.strip():
+            is_title = getattr(shp, "is_placeholder", False) and shp.placeholder_format.type in (1, 3)  # TITLE / CENTER_TITLE
+            size = 36 if is_title else 22
+            for p in shp.text_frame.paragraphs:
+                for run in p.runs:
+                    if run.font.size:
+                        size = run.font.size.pt
+                        break
+                break
+            text = "\n".join(("• " if p.level else "") + p.text for p in shp.text_frame.paragraphs)
+            fs = max(6.0, min(48.0, size * pw / (sw / 12700)))
+            box = fitz.Rect(rect.x0, rect.y0, rect.x1, max(rect.y1, rect.y0 + fs * 1.6))
+            font = "hebo" if is_title else "helv"
+            while fs > 6 and page.insert_textbox(box, text, fontsize=fs, fontname=font, overlay=True) < 0:
+                fs -= 1
+                # insert_textbox draws nothing when it overflows, so retry smaller
+
+    for slide in prs.slides:
+        page = out.new_page(width=pw, height=ph)
+        page.draw_rect(page.rect, color=None, fill=(1, 1, 1))
+        for shp in slide.shapes:
+            try:
+                draw_shape(page, shp)
+            except Exception:
+                continue
+    if out.page_count == 0:
+        raise HTTPException(400, "This presentation has no slides.")
+    data = out.tobytes(deflate=True)
+    pages = out.page_count
+    out.close()
+    return {"file_base64": _b64.b64encode(data).decode(), "size": len(data), "pages": pages}
+
+
+# ---------------------- Install source (Play Install Referrer) ----------------------
+class InstallSourceIn(BaseModel):
+    referrer: str = Field("", max_length=2000)
+
+
+def _classify_referrer(ref: str) -> str:
+    r = (ref or "").lower()
+    if any(k in r for k in ("facebook", "instagram", "fb4a", "utm_source=fb", "meta", "apps.facebook.com")):
+        return "meta"
+    if any(k in r for k in ("gclid", "google-ads", "googleads", "adwords", "utm_source=google")):
+        return "google_ads"
+    if not r or "utm_source=google-play" in r or "organic" in r:
+        return "organic"
+    return "other"
+
+
+@api_router.post("/install-source")
+async def save_install_source(body: InstallSourceIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    source = _classify_referrer(body.referrer)
+    await db.install_sources.update_one(
+        {"user_id": user["user_id"]},
+        {"$setOnInsert": {"user_id": user["user_id"], "source": source, "referrer": body.referrer[:500],
+                          "day": datetime.now(IST).strftime("%Y-%m-%d"), "created_at": utcnow()}},
+        upsert=True,
+    )
+    return {"source": source}
+
+
+@api_router.get("/admin/install-sources")
+async def admin_install_sources(days: int = 14, authorization: Optional[str] = Header(default=None)):
+    await require_admin(authorization)
+    days = max(1, min(days, 90))
+    since = (datetime.now(IST) - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    rows = await db.install_sources.aggregate([
+        {"$match": {"day": {"$gte": since}}},
+        {"$group": {"_id": {"day": "$day", "source": "$source"}, "n": {"$sum": 1}}},
+    ]).to_list(1000)
+    by_day: Dict[str, Dict[str, int]] = {}
+    totals: Dict[str, int] = {}
+    for r in rows:
+        d, s = r["_id"]["day"], r["_id"]["source"]
+        by_day.setdefault(d, {})[s] = r["n"]
+        totals[s] = totals.get(s, 0) + r["n"]
+    out_days = []
+    for i in range(days):
+        d = (datetime.now(IST) - timedelta(days=i)).strftime("%Y-%m-%d")
+        out_days.append({"day": d, **{k: by_day.get(d, {}).get(k, 0) for k in ("meta", "google_ads", "organic", "other")}})
+    return {"days": out_days, "totals": totals}
+
+
 class DocxToPDFIn(BaseModel):
     file_base64: str = Field(..., description="DOCX file bytes as base64")
     title: Optional[str] = None

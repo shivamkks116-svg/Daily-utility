@@ -1089,3 +1089,8 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## Meta App Events
 - react-native-fbsdk-next 13.4.3, plugin in app.json (appID 2359996044826832, autoLog on). src/analytics/metaEvents.{native,web}.ts: init at _layout module scope, CompletedRegistration once per user (MetaEventsSetup), logPurchase on RC premium purchase, ToolUsed custom event from addRecent.
+
+## Converters + insights (v1.0.5)
+- POST /api/xlsx/preview, /api/pdf/to-xlsx (find_tables), /api/pptx/to-pdf (python-pptx render). Generic screen app/pdf-toolkit/convert/[kind].tsx (ppt-to-pdf, pdf-to-excel). SheetPreview in excel-to-pdf.
+- Install source: expo-application getInstallReferrerAsync -> POST /api/install-source (classify meta/google_ads/organic/other, once per user); GET /api/admin/install-sources?days=14; admin InstallSourcesCard.
+- Reading progress: pdf_progress:<uri> saved in reader; bar shown in PDF toolkit Recent rows.
