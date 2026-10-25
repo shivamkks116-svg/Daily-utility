@@ -17,6 +17,16 @@ import { FeatureFlagsProvider } from "@/src/features/flags";
 import { bootstrapTheme } from "@/src/theme/apply";
 import * as Notifications from "expo-notifications";
 import { PushSetup } from "@/src/components/PushSetup";
+import { initializeMetaEvents, logCompletedRegistration } from "@/src/analytics/metaEvents";
+
+initializeMetaEvents();
+
+function MetaEventsSetup({ userId, provider }: { userId?: string; provider?: string }) {
+  useEffect(() => {
+    if (userId) void logCompletedRegistration(userId, provider || "unknown");
+  }, [userId, provider]);
+  return null;
+}
 
 // Push: foreground display + Android channel — module scope, native only.
 if (Platform.OS !== "web") {
@@ -73,6 +83,7 @@ function InnerLayout() {
       <View style={{ flex: 1, backgroundColor: colors.surface }}>
         <AdStartup />
         <PushSetup userId={user?.user_id} />
+        <MetaEventsSetup userId={user?.user_id} provider={user?.provider} />
         <AppLockGate>
           <Stack
             screenOptions={{

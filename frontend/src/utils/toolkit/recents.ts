@@ -3,6 +3,7 @@
  * created or opened inside the Toolkit. Persisted via AsyncStorage.
  */
 import { storage } from "@/src/utils/storage";
+import { logToolUsed } from "@/src/analytics/metaEvents";
 
 const KEY = "dailyhub_toolkit_recents_v1";
 const MAX = 25;
@@ -30,6 +31,7 @@ export async function listRecents(): Promise<RecentEntry[]> {
 }
 
 export async function addRecent(entry: Omit<RecentEntry, "id" | "createdAt"> & Partial<Pick<RecentEntry, "id" | "createdAt">>): Promise<void> {
+  if (entry.tool) logToolUsed(entry.tool);
   const now = Date.now();
   const item: RecentEntry = {
     id: entry.id || `rec_${now}_${Math.random().toString(36).slice(2, 8)}`,

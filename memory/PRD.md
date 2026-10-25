@@ -1086,3 +1086,6 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - Excel → PDF: POST /api/xlsx/to-pdf (openpyxl/xlrd/csv, gridded A4 landscape, header repeat, column chunking). Screen app/pdf-toolkit/excel-to-pdf.tsx, helpers src/utils/xlsx/helpers.ts, listed in PDF toolkit Convert section.
 - Shared Excel (.xlsx/.xls/.csv) intents -> excel-to-pdf (importSheetFromUri, checks xl/workbook.xml before DOCX). Intent filters added in app.json.
 - Resume reading: reader saves last page per doc (pdf_last_page:size:numPages) and jumps on load.
+
+## Meta App Events
+- react-native-fbsdk-next 13.4.3, plugin in app.json (appID 2359996044826832, autoLog on). src/analytics/metaEvents.{native,web}.ts: init at _layout module scope, CompletedRegistration once per user (MetaEventsSetup), logPurchase on RC premium purchase, ToolUsed custom event from addRecent.

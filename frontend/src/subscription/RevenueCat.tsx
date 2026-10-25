@@ -12,6 +12,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import Constants from "expo-constants";
+import { logPurchase } from "@/src/analytics/metaEvents";
 
 const isExpoGo = Constants.executionEnvironment === "storeClient";
 const isWeb = Platform.OS === "web";
@@ -267,6 +268,7 @@ export function SubscriptionProvider({ userId, children }: { userId?: string | n
       setCustomerInfo(info);
       const active = !!info?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
       console.log("[RC]", JSON.stringify({ event: "purchase_success", entitlementActive: active }));
+      if (active) logPurchase(Number(pkg?.product?.price) || 0, pkg?.product?.currencyCode);
       if (!active) {
         // RC reported a success but no entitlement — likely a configuration mismatch.
         throw new Error(

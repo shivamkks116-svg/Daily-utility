@@ -328,6 +328,18 @@
             }
           ]
         }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "2359996044826832",
+          "clientToken": "6dde80c46c8d4c510bfd7a4a119e3c0e",
+          "displayName": "DailyHub AI",
+          "scheme": "fb2359996044826832",
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true,
+          "advertiserIDCollectionEnabled": true
+        }
       ]
     ],
     "experiments": {
