@@ -1890,6 +1890,82 @@ class PDFSignIn(PDFFileIn):
     width_pct: Optional[float] = 25.0  # signature width as % of page width
 
 
+_SIG_FONTS = {
+    "greatvibes": os.path.join(os.path.dirname(__file__), "fonts", "GreatVibes-Regular.ttf"),
+    "dancing": os.path.join(os.path.dirname(__file__), "fonts", "DancingScript.ttf"),
+}
+
+
+def _clean_signature_png(raw: bytes) -> bytes:
+    """Make light/white background transparent and crop to the ink so the
+    signature blends naturally into the page (works for drawn pads + photos)."""
+    from PIL import Image as _PIL, ImageOps
+    from io import BytesIO as _BIO
+    im = _PIL.open(_BIO(raw))
+    im = ImageOps.exif_transpose(im).convert("RGBA")
+    if max(im.size) > 1600:
+        im.thumbnail((1600, 1600))
+    gray = im.convert("L")
+    # Alpha from darkness: ink stays opaque, paper becomes transparent.
+    alpha = gray.point(lambda v: 0 if v > 200 else (255 if v < 120 else int((200 - v) * 255 / 80)))
+    if im.getextrema()[3][0] < 250:  # already has transparency → keep the min of both
+        from PIL import ImageChops
+        alpha = ImageChops.darker(alpha, im.getchannel("A"))
+    ink = _PIL.new("RGBA", im.size, (17, 24, 66, 255))  # natural dark-blue pen ink
+    ink.putalpha(alpha)
+    bbox = alpha.getbbox()
+    if bbox:
+        pad = 6
+        ink = ink.crop((max(0, bbox[0] - pad), max(0, bbox[1] - pad), min(im.width, bbox[2] + pad), min(im.height, bbox[3] + pad)))
+    buf = _BIO()
+    ink.save(buf, "PNG")
+    return buf.getvalue()
+
+
+class SignatureTextIn(BaseModel):
+    text: str = Field(min_length=1, max_length=60)
+    font: str = "greatvibes"
+
+
+@api_router.post("/signature/render")
+async def signature_render(body: SignatureTextIn, authorization: Optional[str] = Header(default=None)):
+    """Render a typed name as a handwritten-style transparent PNG signature."""
+    await require_user(authorization)
+    from PIL import Image as _PIL, ImageDraw, ImageFont
+    from io import BytesIO as _BIO
+    font = ImageFont.truetype(_SIG_FONTS.get(body.font, _SIG_FONTS["greatvibes"]), 160)
+    text = body.text.strip()
+    l, t, r, b = font.getbbox(text)
+    im = _PIL.new("RGBA", (r - l + 40, b - t + 40), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((20 - l, 20 - t), text, font=font, fill=(17, 24, 66, 255))
+    buf = _BIO()
+    im.save(buf, "PNG")
+    return {"png_base64": _b64.b64encode(buf.getvalue()).decode()}
+
+
+class PDFPagePreviewIn(PDFFileIn):
+    page: int = Field(1, ge=1)
+
+
+@api_router.post("/pdf/page-preview")
+async def pdf_page_preview(payload: PDFPagePreviewIn, authorization: Optional[str] = Header(default=None)):
+    """Render one page as a JPEG so the user can drag the signature onto it."""
+    await require_user(authorization)
+    try:
+        doc = fitz.open(stream=_decode_b64_bytes(payload.file_base64), filetype="pdf")
+    except Exception as e:
+        raise HTTPException(400, f"Could not open PDF: {str(e)[:120]}")
+    try:
+        n = len(doc)
+        page = doc[min(payload.page, n) - 1]
+        zoom = 900 / max(1, page.rect.width)
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        img = pix.tobytes("jpeg")
+        return {"image_base64": _b64.b64encode(img).decode(), "width": pix.width, "height": pix.height, "page_count": n}
+    finally:
+        doc.close()
+
+
 @api_router.post("/pdf/sign")
 async def pdf_sign(payload: PDFSignIn, authorization: Optional[str] = Header(default=None)):
     """Stamp a signature image onto a specific PDF page at (x_pct, y_pct)."""
@@ -1898,6 +1974,10 @@ async def pdf_sign(payload: PDFSignIn, authorization: Optional[str] = Header(def
         raise HTTPException(500, "PDF service unavailable")
     data = _decode_b64_bytes(payload.file_base64)
     sig_data = _decode_b64_bytes(payload.signature_base64)
+    try:
+        sig_data = _clean_signature_png(sig_data)
+    except Exception:
+        pass
     try:
         doc = fitz.open(stream=data, filetype="pdf")
     except Exception as e:

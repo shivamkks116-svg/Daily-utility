@@ -1094,3 +1094,7 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - POST /api/xlsx/preview, /api/pdf/to-xlsx (find_tables), /api/pptx/to-pdf (python-pptx render). Generic screen app/pdf-toolkit/convert/[kind].tsx (ppt-to-pdf, pdf-to-excel). SheetPreview in excel-to-pdf.
 - Install source: expo-application getInstallReferrerAsync -> POST /api/install-source (classify meta/google_ads/organic/other, once per user); GET /api/admin/install-sources?days=14; admin InstallSourcesCard.
 - Reading progress: pdf_progress:<uri> saved in reader; bar shown in PDF toolkit Recent rows.
+
+## Sign PDF v2
+- sign.tsx rewritten: Draw (fixed stale-closure bug, transparent pad, scroll lock) / Type (GreatVibes + DancingScript fonts in assets/fonts + backend/fonts) / Upload. Step 2: page preview (/api/pdf/page-preview) with draggable signature overlay + size +/-; 'Open & check' opens Reader.
+- Backend: /api/signature/render (typed -> PNG), _clean_signature_png in /pdf/sign (white -> transparent, crop, ink colour).

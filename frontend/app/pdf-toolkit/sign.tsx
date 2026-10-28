@@ -1,92 +1,117 @@
 import { withPremiumGate } from "@/src/components/PremiumToolGate";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Pressable,
-  ActivityIndicator,
-  PanResponder,
-  Image,
+  View, Text, StyleSheet, ScrollView, Alert, Pressable, ActivityIndicator, PanResponder, Image, TextInput,
+  type LayoutChangeEvent,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
+import { useFonts } from "expo-font";
 import Svg, { Path } from "react-native-svg";
 import { captureRef } from "react-native-view-shot";
 import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
-import {
-  ToolkitHeader,
-  PrimaryButton,
-  SecondaryButton,
-  EmptyState,
-  ProgressBanner,
-} from "@/src/components/toolkit/Primitives";
+import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState } from "@/src/components/toolkit/Primitives";
 import { pickPdfs, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
-import { signPdf } from "@/src/utils/pdf";
+import { signPdf, readPdfBase64 } from "@/src/utils/pdf";
+import { api } from "@/src/api/client";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
-type Mode = "draw" | "upload";
-type Pos = "tl" | "tc" | "tr" | "ml" | "mc" | "mr" | "bl" | "bc" | "br";
-
-const PAD_W = 320;
-const PAD_H = 140;
-
-const POS_LABELS: { key: Pos; label: string; x: number; y: number }[] = [
-  { key: "tl", label: "Top L", x: 5, y: 5 },
-  { key: "tc", label: "Top C", x: 37, y: 5 },
-  { key: "tr", label: "Top R", x: 70, y: 5 },
-  { key: "ml", label: "Mid L", x: 5, y: 45 },
-  { key: "mc", label: "Mid C", x: 37, y: 45 },
-  { key: "mr", label: "Mid R", x: 70, y: 45 },
-  { key: "bl", label: "Bot L", x: 5, y: 80 },
-  { key: "bc", label: "Bot C", x: 37, y: 80 },
-  { key: "br", label: "Bot R", x: 70, y: 80 },
-];
+type Mode = "draw" | "type" | "upload";
+const PAD_H = 160;
+const INK = "#111842";
+const FONTS = [
+  { key: "greatvibes", family: "GreatVibes", label: "Elegant" },
+  { key: "dancing", family: "DancingScript", label: "Casual" },
+] as const;
 
 function SignPdfScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [fontsLoaded] = useFonts({
+    GreatVibes: require("../../assets/fonts/GreatVibes-Regular.ttf"),
+    DancingScript: require("../../assets/fonts/DancingScript.ttf"),
+  });
   const [file, setFile] = useState<PickedPdf | null>(null);
   const [mode, setMode] = useState<Mode>("draw");
   const [paths, setPaths] = useState<string[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>("");
+  const [currentPath, setCurrentPath] = useState("");
+  const curRef = useRef("");
+  const [typed, setTyped] = useState("");
+  const [font, setFont] = useState<(typeof FONTS)[number]["key"]>("greatvibes");
   const [uploadedUri, setUploadedUri] = useState<string | null>(null);
-  const [page, setPage] = useState("1");
-  const [pos, setPos] = useState<Pos>("br");
-  const [widthPct, setWidthPct] = useState(25);
-  const [busy, setBusy] = useState(false);
-  const [resultUri, setResultUri] = useState<string | null>(null);
+  const [scrollOn, setScrollOn] = useState(true);
   const padRef = useRef<View>(null);
 
-  const pan = useRef(
+  // Placement step
+  const [sigB64, setSigB64] = useState<string | null>(null);
+  const [sigAspect, setSigAspect] = useState(0.4);
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [preview, setPreview] = useState<{ b64: string; w: number; h: number } | null>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [pos, setPos] = useState({ x: 0.6, y: 0.82 }); // fraction of page
+  const [widthFrac, setWidthFrac] = useState(0.3);
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const boxRef = useRef(box);
+  boxRef.current = box;
+  const dragStart = useRef({ x: 0, y: 0 });
+
+  const [busy, setBusy] = useState<string | null>(null);
+  const [resultUri, setResultUri] = useState<string | null>(null);
+
+  const drawPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
+        setScrollOn(false);
         const { locationX, locationY } = e.nativeEvent;
-        setCurrentPath(`M ${locationX.toFixed(1)} ${locationY.toFixed(1)}`);
+        curRef.current = `M ${locationX.toFixed(1)} ${locationY.toFixed(1)}`;
+        setCurrentPath(curRef.current);
       },
       onPanResponderMove: (e) => {
         const { locationX, locationY } = e.nativeEvent;
-        setCurrentPath((prev) => `${prev} L ${locationX.toFixed(1)} ${locationY.toFixed(1)}`);
+        curRef.current += ` L ${locationX.toFixed(1)} ${locationY.toFixed(1)}`;
+        setCurrentPath(curRef.current);
       },
       onPanResponderRelease: () => {
-        setPaths((prev) => (currentPath ? [...prev, currentPath] : prev));
+        const d = curRef.current;
+        if (d) setPaths((prev) => [...prev, d]);
+        curRef.current = "";
         setCurrentPath("");
+        setScrollOn(true);
       },
+      onPanResponderTerminate: () => setScrollOn(true),
     }),
   ).current;
 
-  const clearPad = () => {
-    setPaths([]);
-    setCurrentPath("");
-  };
+  const dragPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        setScrollOn(false);
+        dragStart.current = { ...posRef.current };
+      },
+      onPanResponderMove: (_e, g) => {
+        const { w, h } = boxRef.current;
+        if (!w || !h) return;
+        setPos({
+          x: Math.min(0.98, Math.max(0, dragStart.current.x + g.dx / w)),
+          y: Math.min(0.98, Math.max(0, dragStart.current.y + g.dy / h)),
+        });
+      },
+      onPanResponderRelease: () => setScrollOn(true),
+      onPanResponderTerminate: () => setScrollOn(true),
+    }),
+  ).current;
 
   const pickPdf = async () => {
     try {
@@ -94,6 +119,9 @@ function SignPdfScreen() {
       if (picked) {
         setFile(picked);
         setResultUri(null);
+        setSigB64(null);
+        setPreview(null);
+        setPage(1);
       }
     } catch (e: unknown) {
       Alert.alert("Pick failed", (e as Error)?.message || String(e));
@@ -102,90 +130,118 @@ function SignPdfScreen() {
 
   const pickImage = async () => {
     try {
-      const r = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 1,
-        // Android 13+ system Photo Picker — no READ_MEDIA_* permission needed.
-        legacy: false,
-      });
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1, legacy: false });
       if (!r.canceled && r.assets?.[0]) setUploadedUri(r.assets[0].uri);
     } catch (e: unknown) {
       Alert.alert("Image pick failed", (e as Error)?.message || String(e));
     }
   };
 
-  const captureSignature = async (): Promise<string> => {
-    if (mode === "upload") {
-      if (!uploadedUri) throw new Error("Upload a signature image first.");
-      const b64 = await FileSystem.readAsStringAsync(uploadedUri, {
-        encoding: "base64",
-      });
-      return b64;
+  const loadPreview = async (p: number) => {
+    if (!file) return;
+    setBusy("Loading page…");
+    try {
+      const file_base64 = await readPdfBase64(file.uri);
+      const r = await api<{ image_base64: string; width: number; height: number; page_count: number }>(
+        "/pdf/page-preview", { method: "POST", body: { file_base64, page: p } },
+      );
+      setPreview({ b64: r.image_base64, w: r.width, h: r.height });
+      setPageCount(r.page_count);
+    } catch (e: unknown) {
+      Alert.alert("Preview failed", (e as Error)?.message || String(e));
+    } finally {
+      setBusy(null);
     }
-    if (paths.length === 0) throw new Error("Draw your signature first.");
-    if (!padRef.current) throw new Error("Signature pad not ready.");
-    const uri = await captureRef(padRef, {
-      format: "png",
-      quality: 1,
-      result: "base64",
-    });
-    return uri;
+  };
+
+  useEffect(() => {
+    if (sigB64) void loadPreview(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, sigB64 !== null]);
+
+  /** Step 1 → 2: turn the drawn / typed / uploaded signature into a PNG. */
+  const continueToPlace = async () => {
+    setBusy("Preparing signature…");
+    try {
+      let b64: string;
+      if (mode === "upload") {
+        if (!uploadedUri) throw new Error("Upload a signature image first.");
+        b64 = await FileSystem.readAsStringAsync(uploadedUri, { encoding: FileSystem.EncodingType.Base64 });
+      } else if (mode === "type") {
+        if (!typed.trim()) throw new Error("Type your name first.");
+        const r = await api<{ png_base64: string }>("/signature/render", { method: "POST", body: { text: typed.trim(), font } });
+        b64 = r.png_base64;
+      } else {
+        if (paths.length === 0) throw new Error("Draw your signature first.");
+        b64 = await captureRef(padRef, { format: "png", quality: 1, result: "base64" });
+      }
+      Image.getSize(`data:image/png;base64,${b64}`, (w, h) => setSigAspect(h / Math.max(1, w)), () => {});
+      setSigB64(b64);
+      setResultUri(null);
+    } catch (e: unknown) {
+      Alert.alert("Signature", (e as Error)?.message || String(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const apply = async () => {
-    if (!file) return;
-    const p = parseInt(page, 10);
-    if (!p || p < 1) {
-      Alert.alert("Invalid page", "Enter a page number ≥ 1.");
-      return;
-    }
-    setBusy(true);
+    if (!file || !sigB64) return;
+    setBusy("Signing PDF…");
     try {
-      const sig = await captureSignature();
-      const posSpec = POS_LABELS.find((x) => x.key === pos)!;
-      const out = await signPdf(file.uri, sig, {
-        page: p,
-        xPct: posSpec.x,
-        yPct: posSpec.y,
-        widthPct,
+      const out = await signPdf(file.uri, sigB64, {
+        page,
+        xPct: pos.x * 100,
+        yPct: pos.y * 100,
+        widthPct: widthFrac * 100,
       });
       setResultUri(out);
-      await addRecent({
-        kind: "pdf",
-        uri: out,
-        name: file.name.replace(/\.pdf$/i, "-signed.pdf"),
-        size: 0,
-        tool: "Sign PDF",
-      });
+      await addRecent({ kind: "pdf", uri: out, name: file.name.replace(/\.pdf$/i, "-signed.pdf"), size: 0, tool: "Sign PDF" });
     } catch (e: unknown) {
       Alert.alert("Sign failed", (e as Error)?.message || String(e));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   const share = async () => {
     if (!resultUri) return;
-    try {
-      const ok = await Sharing.isAvailableAsync();
-      if (ok) await Sharing.shareAsync(resultUri, { mimeType: "application/pdf", dialogTitle: "Share signed PDF" });
-    } catch (e: unknown) {
-      Alert.alert("Share failed", (e as Error)?.message || String(e));
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(resultUri, { mimeType: "application/pdf", dialogTitle: "Share signed PDF" });
     }
   };
 
+  const openResult = () => {
+    if (!resultUri || !file) return;
+    router.push({
+      pathname: "/pdf-toolkit/reader",
+      params: { sharedUri: resultUri, sharedName: file.name.replace(/\.pdf$/i, "-signed.pdf"), sharedSize: "0" },
+    });
+  };
+
+  const onBoxLayout = (e: LayoutChangeEvent) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height });
+  const fontFamily = FONTS.find((f) => f.key === font)!.family;
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <ToolkitHeader title="Sign PDF" subtitle="Draw or upload a signature and stamp it on any page" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl, paddingHorizontal: spacing.lg }}>
+      <ToolkitHeader
+        title="Sign PDF"
+        subtitle={sigB64 ? "Drag the signature to where it belongs" : "Draw, type or upload your signature"}
+        onBack={() => (sigB64 ? setSigB64(null) : router.back())}
+      />
+      <ScrollView
+        scrollEnabled={scrollOn}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl, paddingHorizontal: spacing.lg }}
+      >
         {!file ? (
           <EmptyState
             icon="create-outline"
             title="Pick a PDF to sign"
-            subtitle="You can then draw or upload your signature."
+            subtitle="Then draw, type or upload your signature and drag it into place."
             action={<PrimaryButton icon="folder-open" label="Choose PDF" onPress={pickPdf} />}
           />
-        ) : (
+        ) : !sigB64 ? (
           <>
             <View style={styles.card}>
               <Ionicons name="document" size={22} color={colors.brandPrimary} />
@@ -193,103 +249,132 @@ function SignPdfScreen() {
                 <Text style={styles.name} numberOfLines={1}>{file.name}</Text>
                 <Text style={styles.meta}>{humanBytes(file.size)}</Text>
               </View>
-              <Pressable onPress={pickPdf}><Ionicons name="swap-horizontal" size={20} color={colors.onSurfaceTertiary} /></Pressable>
+              <Pressable onPress={pickPdf} hitSlop={10}><Ionicons name="swap-horizontal" size={20} color={colors.onSurfaceTertiary} /></Pressable>
             </View>
 
-            {/* Mode toggle */}
             <View style={styles.segment}>
-              {(["draw", "upload"] as const).map((m) => (
-                <Pressable
-                  key={m}
-                  onPress={() => setMode(m)}
-                  style={[styles.segmentBtn, mode === m && styles.segmentBtnActive]}
-                  testID={`sign-mode-${m}`}
-                >
-                  <Ionicons name={m === "draw" ? "brush" : "cloud-upload"} size={14} color={mode === m ? colors.onBrandPrimary : colors.onSurfaceSecondary} />
-                  <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>{m === "draw" ? "Draw" : "Upload"}</Text>
+              {(["draw", "type", "upload"] as const).map((m) => (
+                <Pressable key={m} onPress={() => setMode(m)} style={[styles.segmentBtn, mode === m && styles.segmentBtnActive]} testID={`sign-mode-${m}`}>
+                  <Ionicons
+                    name={m === "draw" ? "brush" : m === "type" ? "text" : "cloud-upload"}
+                    size={14}
+                    color={mode === m ? colors.onBrandPrimary : colors.onSurfaceSecondary}
+                  />
+                  <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>
+                    {m === "draw" ? "Draw" : m === "type" ? "Type" : "Upload"}
+                  </Text>
                 </Pressable>
               ))}
             </View>
 
-            {/* Signature area */}
             {mode === "draw" ? (
               <View style={styles.padCard}>
-                <View
-                  ref={padRef}
-                  collapsable={false}
-                  style={styles.pad}
-                  {...pan.panHandlers}
-                >
-                  <Svg width={PAD_W} height={PAD_H} style={{ backgroundColor: "#fff" }}>
+                {/* Transparent capture view so the signature has no white box. */}
+                <View ref={padRef} collapsable={false} style={styles.pad} {...drawPan.panHandlers}>
+                  <Svg width="100%" height={PAD_H}>
                     {paths.map((d, i) => (
-                      <Path key={i} d={d} stroke="#111" strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      <Path key={i} d={d} stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                     ))}
-                    {currentPath ? (
-                      <Path d={currentPath} stroke="#111" strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    ) : null}
+                    {currentPath ? <Path d={currentPath} stroke={INK} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" /> : null}
                   </Svg>
+                  {paths.length === 0 && !currentPath ? <Text style={styles.padHint} pointerEvents="none">Sign here with your finger</Text> : null}
                 </View>
-                <Pressable onPress={clearPad} style={styles.clearBtn}>
+                <View style={styles.padLine} pointerEvents="none" />
+                <Pressable onPress={() => { setPaths([]); setCurrentPath(""); }} style={styles.clearBtn}>
                   <Ionicons name="refresh" size={14} color={colors.onSurface} />
                   <Text style={styles.clearText}>Clear</Text>
                 </Pressable>
               </View>
+            ) : mode === "type" ? (
+              <View style={styles.padCard}>
+                <TextInput
+                  testID="sign-type-input"
+                  value={typed}
+                  onChangeText={setTyped}
+                  placeholder="Type your full name"
+                  placeholderTextColor={colors.onSurfaceTertiary}
+                  maxLength={60}
+                  style={styles.typeInput}
+                />
+                <View style={styles.typePreview}>
+                  <Text style={[styles.typePreviewText, fontsLoaded && { fontFamily }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {typed || "Your Name"}
+                  </Text>
+                </View>
+                <View style={[styles.segment, { marginTop: spacing.sm }]}>
+                  {FONTS.map((f) => (
+                    <Pressable key={f.key} onPress={() => setFont(f.key)} style={[styles.segmentBtn, font === f.key && styles.segmentBtnActive]}>
+                      <Text style={[styles.segmentText, font === f.key && styles.segmentTextActive, fontsLoaded && { fontFamily: f.family, fontSize: 18 }]}>
+                        {f.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
             ) : (
-              <View style={styles.uploadCard}>
+              <View style={styles.padCard}>
                 {uploadedUri ? (
                   <Image source={{ uri: uploadedUri }} style={styles.uploadPreview} resizeMode="contain" />
                 ) : (
                   <View style={styles.uploadPlaceholder}>
                     <Ionicons name="image" size={26} color={colors.onSurfaceTertiary} />
-                    <Text style={styles.uploadHint}>Upload a signature PNG (transparent background works best)</Text>
+                    <Text style={styles.uploadHint}>Sign on white paper and take a photo. The paper background is removed automatically.</Text>
                   </View>
                 )}
                 <SecondaryButton icon="cloud-upload" label={uploadedUri ? "Change image" : "Choose signature image"} onPress={pickImage} />
               </View>
             )}
 
-            {/* Page number */}
-            <Text style={styles.sectionLabel}>Page number</Text>
-            <View style={styles.pageInputRow}>
-              <Pressable onPress={() => setPage((p) => String(Math.max(1, parseInt(p, 10) - 1)))} style={styles.pageBtn}>
+            <View style={{ marginTop: spacing.lg }}>
+              <PrimaryButton icon="arrow-forward" label="Next: place on page" onPress={continueToPlace} disabled={!!busy} />
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.pageRow}>
+              <Pressable disabled={page <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))} style={[styles.pageBtn, page <= 1 && { opacity: 0.4 }]}>
+                <Ionicons name="chevron-back" size={18} color={colors.onSurface} />
+              </Pressable>
+              <Text style={styles.pageValue}>Page {page} / {pageCount}</Text>
+              <Pressable disabled={page >= pageCount} onPress={() => setPage((p) => Math.min(pageCount, p + 1))} style={[styles.pageBtn, page >= pageCount && { opacity: 0.4 }]}>
+                <Ionicons name="chevron-forward" size={18} color={colors.onSurface} />
+              </Pressable>
+            </View>
+
+            {preview ? (
+              <View
+                testID="sign-page-preview"
+                onLayout={onBoxLayout}
+                style={[styles.pageBox, { aspectRatio: preview.w / preview.h }]}
+              >
+                <Image source={{ uri: `data:image/jpeg;base64,${preview.b64}` }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+                {box.w ? (
+                  <View
+                    testID="sign-drag-handle"
+                    {...dragPan.panHandlers}
+                    style={[
+                      styles.sigOverlay,
+                      { left: pos.x * box.w, top: pos.y * box.h, width: widthFrac * box.w, height: widthFrac * box.w * sigAspect },
+                    ]}
+                  >
+                    <Image source={{ uri: `data:image/png;base64,${sigB64}` }} style={styles.sigImg} resizeMode="contain" />
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View style={[styles.pageBox, styles.center]}><ActivityIndicator color={colors.brandPrimary} /></View>
+            )}
+
+            <Text style={styles.sectionLabel}>Signature size</Text>
+            <View style={styles.pageRow}>
+              <Pressable onPress={() => setWidthFrac((w) => Math.max(0.1, +(w - 0.05).toFixed(2)))} style={styles.pageBtn}>
                 <Ionicons name="remove" size={18} color={colors.onSurface} />
               </Pressable>
-              <Text style={styles.pageValue}>{page}</Text>
-              <Pressable onPress={() => setPage((p) => String((parseInt(p, 10) || 0) + 1))} style={styles.pageBtn}>
+              <Text style={styles.pageValue}>{Math.round(widthFrac * 100)}%</Text>
+              <Pressable onPress={() => setWidthFrac((w) => Math.min(0.8, +(w + 0.05).toFixed(2)))} style={styles.pageBtn}>
                 <Ionicons name="add" size={18} color={colors.onSurface} />
               </Pressable>
             </View>
-
-            {/* Position picker */}
-            <Text style={styles.sectionLabel}>Position on page</Text>
-            <View style={styles.grid}>
-              {POS_LABELS.map((p) => (
-                <Pressable
-                  key={p.key}
-                  onPress={() => setPos(p.key)}
-                  style={[styles.posBtn, pos === p.key && styles.posBtnActive]}
-                  testID={`sign-pos-${p.key}`}
-                >
-                  <Text style={[styles.posText, pos === p.key && styles.posTextActive]}>{p.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {/* Size picker */}
-            <Text style={styles.sectionLabel}>Signature width</Text>
-            <View style={styles.segment}>
-              {[15, 25, 40].map((w) => (
-                <Pressable
-                  key={w}
-                  onPress={() => setWidthPct(w)}
-                  style={[styles.segmentBtn, widthPct === w && styles.segmentBtnActive]}
-                >
-                  <Text style={[styles.segmentText, widthPct === w && styles.segmentTextActive]}>{w}%</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {busy ? <ProgressBanner label="Stamping signature onto PDF…" /> : null}
 
             {resultUri ? (
               <View style={styles.resultCard}>
@@ -299,66 +384,86 @@ function SignPdfScreen() {
             ) : null}
 
             <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+              {resultUri ? <PrimaryButton icon="eye" label="Open & check signed PDF" onPress={openResult} /> : null}
               {resultUri ? <SecondaryButton icon="share-outline" label="Share signed PDF" onPress={share} /> : null}
-              <PrimaryButton icon="create" label={resultUri ? "Re-sign" : "Apply signature"} onPress={apply} disabled={busy} />
+              {resultUri ? (
+                <SecondaryButton icon="create" label="Sign again" onPress={apply} disabled={!!busy} />
+              ) : (
+                <PrimaryButton icon="checkmark" label="Apply signature" onPress={apply} disabled={!!busy} />
+              )}
+              <SecondaryButton icon="brush" label="Change signature" onPress={() => setSigB64(null)} />
             </View>
           </>
         )}
       </ScrollView>
-      {busy ? <View style={styles.overlay}><ActivityIndicator size="large" color={colors.brandPrimary} /></View> : null}
+      {busy ? (
+        <View style={styles.overlay}>
+          <ActivityIndicator size="large" color={colors.brandPrimary} />
+          <Text style={styles.overlayText}>{busy}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
+  center: { alignItems: "center", justifyContent: "center" },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    marginTop: spacing.md,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, marginTop: spacing.md,
+    borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
   },
   name: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   meta: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2 },
   segment: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: spacing.lg,
-    backgroundColor: colors.surfaceSecondary,
-    padding: 4,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    flexDirection: "row", gap: 4, padding: 4, marginTop: spacing.md, borderRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
   },
-  segmentBtn: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, paddingVertical: 8, borderRadius: radius.sm },
+  segmentBtn: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, minHeight: 40, borderRadius: radius.sm },
   segmentBtnActive: { backgroundColor: colors.brandPrimary },
-  segmentText: { color: colors.onSurfaceSecondary, fontSize: 12, fontWeight: fontWeight.semibold },
+  segmentText: { color: colors.onSurfaceSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
   segmentTextActive: { color: colors.onBrandPrimary },
-  padCard: { marginTop: spacing.md, alignItems: "center", gap: spacing.sm },
-  pad: { width: PAD_W, height: PAD_H, borderRadius: radius.md, overflow: "hidden", borderWidth: 1, borderColor: colors.border },
-  clearBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary },
+  padCard: {
+    marginTop: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  pad: { height: PAD_H, borderRadius: radius.sm, backgroundColor: "transparent", overflow: "hidden" },
+  padHint: { position: "absolute", alignSelf: "center", top: PAD_H / 2 - 10, color: colors.onSurfaceTertiary, fontSize: fontSize.sm },
+  padLine: { height: 1, backgroundColor: colors.borderStrong, marginTop: -40, marginHorizontal: spacing.lg, marginBottom: 32 },
+  clearBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end", minHeight: 36, paddingHorizontal: spacing.md },
   clearText: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
-  uploadCard: { marginTop: spacing.md, gap: spacing.sm },
-  uploadPreview: { width: "100%", height: 160, backgroundColor: "#fff", borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  uploadPlaceholder: { alignItems: "center", justifyContent: "center", padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
-  uploadHint: { color: colors.onSurfaceTertiary, fontSize: 11, textAlign: "center" },
-  sectionLabel: { color: colors.onSurfaceSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold, marginTop: spacing.lg, marginBottom: spacing.xs },
-  pageInputRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md },
-  pageBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
-  pageValue: { color: colors.onSurface, fontSize: fontSize.xl, fontWeight: fontWeight.extrabold, minWidth: 60, textAlign: "center" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  posBtn: { width: "31.5%", paddingVertical: 10, alignItems: "center", borderRadius: radius.sm, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
-  posBtnActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  posText: { color: colors.onSurfaceSecondary, fontSize: 11, fontWeight: fontWeight.semibold },
-  posTextActive: { color: colors.onBrandPrimary },
-  resultCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg, padding: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: colors.brandSecondary },
-  resultTitle: { color: colors.onBrandTertiary, fontSize: fontSize.md, fontWeight: fontWeight.bold },
-  overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
+  typeInput: {
+    minHeight: 48, paddingHorizontal: spacing.md, borderRadius: radius.sm, color: colors.onSurface, fontSize: fontSize.md,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  },
+  typePreview: { height: 90, justifyContent: "center", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: radius.sm },
+  typePreviewText: { color: INK, fontSize: 44, paddingHorizontal: spacing.md },
+  uploadPreview: { width: "100%", height: 140, backgroundColor: "#FFFFFF", borderRadius: radius.sm },
+  uploadPlaceholder: { height: 140, alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.lg },
+  uploadHint: { color: colors.onSurfaceTertiary, fontSize: fontSize.sm, textAlign: "center" },
+  sectionLabel: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.bold, marginTop: spacing.lg, marginBottom: spacing.sm },
+  pageRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg, marginTop: spacing.md },
+  pageBtn: {
+    width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  pageValue: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.bold, minWidth: 90, textAlign: "center" },
+  pageBox: {
+    width: "100%", minHeight: 200, marginTop: spacing.md, backgroundColor: "#FFFFFF",
+    borderWidth: 1, borderColor: colors.border, overflow: "hidden",
+  },
+  sigOverlay: { position: "absolute", borderWidth: 1, borderStyle: "dashed", borderColor: colors.brandPrimary },
+  sigImg: { width: "100%", height: "100%" },
+  resultCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg, padding: spacing.md,
+    borderRadius: radius.md, backgroundColor: colors.surfaceSecondary,
+  },
+  resultTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  overlay: {
+    ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    backgroundColor: colors.surface + "CC",
+  },
+  overlayText: { color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
 });
 
 export default withPremiumGate(SignPdfScreen, "Sign PDF");
