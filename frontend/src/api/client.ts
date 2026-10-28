@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 
 // Production backend URL (hardcoded fallback so shipped APKs always work,
@@ -77,13 +78,33 @@ async function bootstrapGuestSession(): Promise<string | null> {
 
 async function rawFetch(path: string, opts: Opts, token: string | null) {
   const { method = "GET", body } = opts;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", "X-Platform": Platform.OS };
   if (token) headers.Authorization = `Bearer ${token}`;
   return fetch(`${API_BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+}
+
+/** 403 from Play Integrity enforcement: attest once and retry, or show the block screen. */
+async function handleIntegrity(path: string, opts: Opts, token: string | null, res: Response): Promise<Response> {
+  if (res.status !== 403 || path.startsWith("/integrity")) return res;
+  let code: string | undefined;
+  try {
+    code = (await res.clone().json())?.detail?.error;
+  } catch {
+    return res;
+  }
+  const integrity = await import("@/src/security/integrity");
+  if (code === "integrity_failed") {
+    integrity.markIntegrityFailed();
+    return res;
+  }
+  if (code === "integrity_required" && (await integrity.attestIntegrity())) {
+    return rawFetch(path, opts, token);
+  }
+  return res;
 }
 
 export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
@@ -113,6 +134,7 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
       res = await rawFetch(path, opts, token);
     }
   }
+  res = await handleIntegrity(path, opts, token, res);
 
   if (res.status === 401) {
     // Clear the (now-invalid) token so subsequent app boots don't keep hitting

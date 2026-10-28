@@ -74,6 +74,17 @@ def _verify_firebase_id_token(token: str) -> Dict[str, Any]:
     return claims
 
 app = FastAPI(title="DailyHub AI API")
+
+import integrity as _integrity  # noqa: E402
+
+
+@app.middleware("http")
+async def _integrity_ctx_mw(request, call_next):
+    _integrity.request_ctx.set({
+        "path": request.url.path,
+        "platform": (request.headers.get("x-platform") or "").lower(),
+    })
+    return await call_next(request)
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -119,10 +130,40 @@ async def get_user_from_token(authorization: Optional[str]) -> Optional[dict]:
     return user
 
 
+INTEGRITY_EXEMPT_PREFIXES = ("/api/integrity", "/api/auth", "/api/flags", "/api/app-ads", "/api/health")
+_integrity_cache: Dict[str, tuple] = {}
+
+
+async def _enforce_integrity(user: dict):
+    """Block modded / re-signed Android builds (Play Integrity verdict cached 24h per user)."""
+    if not _integrity.ENABLED:
+        return
+    ctx = _integrity.request_ctx.get()
+    path = ctx.get("path", "")
+    if ctx.get("platform") == "web" or path.startswith(INTEGRITY_EXEMPT_PREFIXES):
+        return
+    uid = user["user_id"]
+    now = utcnow()
+    cached = _integrity_cache.get(uid)
+    if not cached or cached[2] < now:
+        doc = await db.integrity.find_one({"user_id": uid}, {"_id": 0, "ok": 1, "until": 1})
+        until = doc.get("until") if doc else None
+        if until is not None and until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        cached = (doc.get("ok") if doc else None, until, now + timedelta(minutes=5))
+        _integrity_cache[uid] = cached
+    ok, until, _ = cached
+    if ok is None or until is None or until < now:
+        raise HTTPException(403, detail={"error": "integrity_required"})
+    if ok is False:
+        raise HTTPException(403, detail={"error": "integrity_failed", "message": "This app is not genuine. Install DailyHub from Google Play."})
+
+
 async def require_user(authorization: Optional[str]) -> dict:
     user = await get_user_from_token(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    await _enforce_integrity(user)
     return user
 
 
@@ -1179,23 +1220,9 @@ class PremiumMockIn(BaseModel):
 
 @api_router.post("/premium/mock-purchase")
 async def premium_mock_purchase(payload: PremiumMockIn, authorization: Optional[str] = Header(default=None)):
-    """MOCKED endpoint. Real Play Billing v8 requires a native dev build.
-    This activates premium locally for UX testing. In production, replace with server-side
-    receipt verification from Google Play Developer API."""
-    user = await require_user(authorization)
-    now = utcnow()
-    await db.premium.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {
-            "user_id": user["user_id"],
-            "premium": True,
-            "plan": payload.plan,
-            "activated_at": now,
-            "source": "mock",
-        }},
-        upsert=True,
-    )
-    return {"premium": True, "plan": payload.plan, "activated_at": now.isoformat(), "mocked": True}
+    """Disabled — it let anyone grant themselves Premium for free.
+    Premium comes only from RevenueCat (real Play Billing)."""
+    raise HTTPException(status_code=410, detail="Endpoint removed")
 
 
 @api_router.post("/premium/cancel")
@@ -1206,6 +1233,43 @@ async def premium_cancel(authorization: Optional[str] = Header(default=None)):
         {"$set": {"premium": False, "cancelled_at": utcnow()}},
     )
     return {"premium": False}
+
+
+# ---------------------- Play Integrity ----------------------
+class IntegrityVerifyIn(BaseModel):
+    token: str = Field(min_length=10, max_length=20000)
+    nonce: str = Field(min_length=10, max_length=200)
+
+
+@api_router.get("/integrity/config")
+async def integrity_config(authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    if not _integrity.ENABLED:
+        return {"enabled": False}
+    import secrets as _secrets
+    nonce = _secrets.token_urlsafe(32)
+    await db.integrity_nonces.insert_one({"nonce": nonce, "user_id": user["user_id"], "created_at": utcnow()})
+    return {"enabled": True, "project_number": _integrity.PROJECT_NUMBER, "nonce": nonce}
+
+
+@api_router.post("/integrity/verify")
+async def integrity_verify(body: IntegrityVerifyIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    if not _integrity.ENABLED:
+        return {"ok": True}
+    n = await db.integrity_nonces.find_one_and_delete({"nonce": body.nonce, "user_id": user["user_id"]})
+    if not n:
+        raise HTTPException(400, "Unknown or used nonce")
+    ok, reason = await _integrity.decode_and_check(body.token, body.nonce)
+    await db.integrity.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"ok": ok, "reason": reason, "checked_at": utcnow(), "until": utcnow() + timedelta(hours=24)}},
+        upsert=True,
+    )
+    _integrity_cache.pop(user["user_id"], None)
+    if not ok:
+        logger.warning("Integrity FAILED for %s: %s", user["user_id"], reason)
+    return {"ok": ok}
 
 
 # ---------------------- Currency Rates (public API proxy) ----------------------

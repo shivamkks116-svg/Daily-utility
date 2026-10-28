@@ -1098,3 +1098,8 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 ## Sign PDF v2
 - sign.tsx rewritten: Draw (fixed stale-closure bug, transparent pad, scroll lock) / Type (GreatVibes + DancingScript fonts in assets/fonts + backend/fonts) / Upload. Step 2: page preview (/api/pdf/page-preview) with draggable signature overlay + size +/-; 'Open & check' opens Reader.
 - Backend: /api/signature/render (typed -> PNG), _clean_signature_png in /pdf/sign (white -> transparent, crop, ink colour).
+
+## Anti-tamper (v1.0.5)
+- R8 minify + shrinkResources + extraProguardRules in expo-build-properties.
+- /api/premium/mock-purchase disabled (410).
+- Play Integrity: local module frontend/modules/expo-play-integrity (Kotlin, integrity 1.6.0), src/security/integrity.ts, IntegrityGate block screen; client sends X-Platform header and retries on 403 integrity_required. Backend integrity.py + _enforce_integrity in require_user (24h verdict per user; exempt /api/auth,/api/integrity,/api/flags). Enabled only when PLAY_INTEGRITY_SA_JSON + PLAY_CLOUD_PROJECT_NUMBER set (optional PLAY_CERT_DIGESTS).

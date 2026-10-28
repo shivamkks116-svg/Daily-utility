@@ -278,7 +278,9 @@
             "targetSdkVersion": 36,
             "buildToolsVersion": "36.0.0",
             "minSdkVersion": 24,
-            "enableProguardInReleaseBuilds": false
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class com.facebook.react.** { *; }\n-keep class com.facebook.hermes.** { *; }\n-keep class com.facebook.jni.** { *; }\n-keep class com.facebook.** { *; }\n-keep class expo.modules.** { *; }\n-keep class org.wonday.pdf.** { *; }\n-keep class io.legere.** { *; }\n-keep class com.github.barteksc.** { *; }\n-keep class com.shockwave.** { *; }\n-keep class com.reactnativeandroidwidget.** { *; }\n-keep class io.invertase.** { *; }\n-keep class com.google.android.gms.ads.** { *; }\n-keep class com.revenuecat.** { *; }\n-keep class com.swmansion.** { *; }\n-keep class com.th3rdwave.safeareacontext.** { *; }\n-keep class com.horcrux.svg.** { *; }\n-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.dailyutility.app.** { *; }\n-keep class com.google.android.play.core.integrity.** { *; }\n-dontwarn com.google.android.play.core.**\n-dontwarn org.bouncycastle.**\n-dontwarn org.conscrypt.**\n-dontwarn org.openjsse.**"
           }
         }
       ],

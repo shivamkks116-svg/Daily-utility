@@ -19,6 +19,7 @@ import * as Notifications from "expo-notifications";
 import { PushSetup } from "@/src/components/PushSetup";
 import { initializeMetaEvents, logCompletedRegistration } from "@/src/analytics/metaEvents";
 import { reportInstallSource } from "@/src/analytics/installSource";
+import { IntegrityGate } from "@/src/components/IntegrityGate";
 
 initializeMetaEvents();
 
@@ -87,6 +88,7 @@ function InnerLayout() {
         <AdStartup />
         <PushSetup userId={user?.user_id} />
         <MetaEventsSetup userId={user?.user_id} provider={user?.provider} />
+        <IntegrityGate userId={user?.user_id} />
         <AppLockGate>
           <Stack
             screenOptions={{
