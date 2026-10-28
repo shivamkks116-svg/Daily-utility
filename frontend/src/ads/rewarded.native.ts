@@ -17,14 +17,17 @@ if (nativeAndroid) {
   try { admob = require("react-native-google-mobile-ads"); } catch {}
 }
 
-export function showRewardedAdResult(): Promise<RewardedResult> {
+export function showRewardedAdResult(ssv?: { userId: string; customData: string }): Promise<RewardedResult> {
   if (!adsAvailable || !admob || !adUnitIds.rewarded) return Promise.resolve("unavailable");
   return new Promise((resolve) => {
     let earned = false;
     let shown = false;
     let settled = false;
     const { RewardedAd, AdEventType, RewardedAdEventType } = admob;
-    const ad = RewardedAd.createForAdRequest(adUnitIds.rewarded);
+    const ad = RewardedAd.createForAdRequest(
+      adUnitIds.rewarded,
+      ssv ? { serverSideVerificationOptions: { userId: ssv.userId, customData: ssv.customData } } : undefined,
+    );
     const offs: (() => void)[] = [];
     const finish = (r: RewardedResult) => {
       if (settled) return;

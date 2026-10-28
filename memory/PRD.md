@@ -1103,3 +1103,9 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - R8 minify + shrinkResources + extraProguardRules in expo-build-properties.
 - /api/premium/mock-purchase disabled (410).
 - Play Integrity: local module frontend/modules/expo-play-integrity (Kotlin, integrity 1.6.0), src/security/integrity.ts, IntegrityGate block screen; client sends X-Platform header and retries on 403 integrity_required. Backend integrity.py + _enforce_integrity in require_user (24h verdict per user; exempt /api/auth,/api/integrity,/api/flags). Enabled only when PLAY_INTEGRITY_SA_JSON + PLAY_CLOUD_PROJECT_NUMBER set (optional PLAY_CERT_DIGESTS).
+
+## v1.0.5 additions
+- AdMob SSV: GET /api/admob/ssv (ECDSA verify via gstatic keys) stores db.ad_rewards; /api/ai/reward requires matching nonce once any SSV record exists (self-activating). Client passes serverSideVerificationOptions {userId, customData: nonce} and polls on 409.
+- Scan Document: app/pdf-toolkit/scan.tsx using react-native-document-scanner-plugin (ML Kit, no camera permission on Android).
+- Saved signatures: src/utils/pdf/savedSignatures.ts (3 max, on-device), row in sign.tsx.
+- Play Integrity keys set (PLAY_INTEGRITY_SA_JSON, PLAY_CLOUD_PROJECT_NUMBER, PLAY_CERT_DIGESTS) -> enforcement ON for X-Platform: android. Old builds without header pass until INTEGRITY_STRICT=true env is set. versionCode 10.

@@ -26,7 +26,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.dailyutility.app",
-      "versionCode": 9,
+      "versionCode": 10,
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
@@ -342,7 +342,8 @@
           "isAutoInitEnabled": true,
           "advertiserIDCollectionEnabled": true
         }
-      ]
+      ],
+      "react-native-document-scanner-plugin"
     ],
     "experiments": {
       "typedRoutes": true

@@ -5,6 +5,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { api } from "@/src/api/client";
 import { showRewardedAdResult } from "@/src/ads/rewarded";
 import { ADS_ENABLED } from "@/src/ads/ids";
+import { useAuth } from "@/src/contexts/AuthContext";
 
 export type AILimitDialogProps = {
   visible: boolean;
@@ -17,6 +18,7 @@ export type AILimitDialogProps = {
 
 export function AILimitDialog({ visible, onClose, onGranted, mode = "limit", remaining }: AILimitDialogProps) {
   const [loadingAd, setLoadingAd] = useState(false);
+  const { user } = useAuth();
   const [err, setErr] = useState<string | null>(null);
 
   async function handleWatchAd() {
@@ -27,7 +29,8 @@ export function AILimitDialog({ visible, onClose, onGranted, mode = "limit", rem
     }
     setLoadingAd(true);
     try {
-      const result = await showRewardedAdResult();
+      const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+      const result = await showRewardedAdResult(user?.user_id ? { userId: user.user_id, customData: nonce } : undefined);
       if (result !== "earned") {
         setLoadingAd(false);
         setErr(result === "unavailable"
@@ -35,11 +38,25 @@ export function AILimitDialog({ visible, onClose, onGranted, mode = "limit", rem
           : "Ad wasn't completed. Please watch the full ad to earn bonus requests.");
         return;
       }
-      try {
-        await api("/ai/reward", { method: "POST", body: {} });
-      } catch (e: any) {
+      // Google's verification callback can take a few seconds to reach our server.
+      let granted = false;
+      for (let attempt = 0; attempt < 6 && !granted; attempt++) {
+        try {
+          await api("/ai/reward", { method: "POST", body: { nonce } });
+          granted = true;
+        } catch (e: any) {
+          if (e?.status === 409 || e?.message === "reward_pending") {
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
+          setLoadingAd(false);
+          setErr(e?.message?.includes("bonus limit") ? "Daily bonus limit reached. Come back tomorrow." : "Couldn't grant bonus. Please try again in a moment.");
+          return;
+        }
+      }
+      if (!granted) {
         setLoadingAd(false);
-        setErr(e?.message?.includes("bonus limit") ? "Daily bonus limit reached. Come back tomorrow." : "Couldn't grant bonus. Please try again in a moment.");
+        setErr("We couldn't confirm the ad yet. Please try again in a minute.");
         return;
       }
       setLoadingAd(false);

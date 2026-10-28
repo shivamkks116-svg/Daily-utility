@@ -32,7 +32,7 @@ const CATEGORIES: { key: string; title: string; tools: Tool[] }[] = [
     tools: [
       { key: "images-to-pdf", label: "Images → PDF", desc: "Merge photos into one PDF", icon: "images", route: "/pdf-toolkit/images-to-pdf" },
       { key: "text-to-pdf", label: "Text → PDF", desc: "Type or paste text, get a PDF", icon: "document-text", route: "/pdf-toolkit/text-to-pdf" },
-      { key: "scan-to-pdf", label: "Scan Document", desc: "Coming in v1.1 — camera scan", icon: "scan", soon: true },
+      { key: "scan-to-pdf", label: "Scan Document", desc: "Camera scan into a clean PDF", icon: "scan", route: "/pdf-toolkit/scan" },
     ],
   },
   {

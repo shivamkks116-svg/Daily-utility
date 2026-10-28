@@ -19,6 +19,7 @@ import { pickPdfs, humanBytes, type PickedPdf } from "@/src/utils/pdf/helpers";
 import { signPdf, readPdfBase64 } from "@/src/utils/pdf";
 import { api } from "@/src/api/client";
 import { addRecent } from "@/src/utils/toolkit/recents";
+import { deleteSignature, listSavedSignatures, saveSignature } from "@/src/utils/pdf/savedSignatures";
 
 type Mode = "draw" | "type" | "upload";
 const PAD_H = 160;
@@ -63,6 +64,25 @@ function SignPdfScreen() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [resultUri, setResultUri] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string[]>([]);
+
+  useEffect(() => {
+    listSavedSignatures().then(setSaved).catch(() => {});
+  }, []);
+
+  const applySaved = (b64: string) => {
+    Image.getSize(`data:image/png;base64,${b64}`, (w, h) => setSigAspect(h / Math.max(1, w)), () => {});
+    setSigB64(b64);
+    setResultUri(null);
+    saveSignature(b64).then(setSaved).catch(() => {});
+  };
+
+  const removeSaved = (b64: string) => {
+    Alert.alert("Delete saved signature?", "", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => { deleteSignature(b64).then(setSaved).catch(() => {}); } },
+    ]);
+  };
 
   const drawPan = useRef(
     PanResponder.create({
@@ -178,6 +198,7 @@ function SignPdfScreen() {
       Image.getSize(`data:image/png;base64,${b64}`, (w, h) => setSigAspect(h / Math.max(1, w)), () => {});
       setSigB64(b64);
       setResultUri(null);
+      saveSignature(b64).then(setSaved).catch(() => {});
     } catch (e: unknown) {
       Alert.alert("Signature", (e as Error)?.message || String(e));
     } finally {
@@ -251,6 +272,26 @@ function SignPdfScreen() {
               </View>
               <Pressable onPress={pickPdf} hitSlop={10}><Ionicons name="swap-horizontal" size={20} color={colors.onSurfaceTertiary} /></Pressable>
             </View>
+
+            {saved.length ? (
+              <>
+                <Text style={styles.sectionLabel}>Saved signatures · tap to use</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+                  {saved.map((b64, i) => (
+                    <Pressable
+                      key={i}
+                      testID={`saved-signature-${i}`}
+                      onPress={() => applySaved(b64)}
+                      onLongPress={() => removeSaved(b64)}
+                      style={styles.savedChip}
+                    >
+                      <Image source={{ uri: `data:image/png;base64,${b64}` }} style={styles.savedImg} resizeMode="contain" />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Text style={styles.meta}>Long-press to delete. Or create a new one below.</Text>
+              </>
+            ) : null}
 
             <View style={styles.segment}>
               {(["draw", "type", "upload"] as const).map((m) => (
@@ -459,6 +500,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, backgroundColor: colors.surfaceSecondary,
   },
   resultTitle: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  savedChip: {
+    width: 120, height: 60, borderRadius: radius.sm, padding: 6, backgroundColor: "#FFFFFF",
+    borderWidth: 1, borderColor: colors.border,
+  },
+  savedImg: { width: "100%", height: "100%" },
   overlay: {
     ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: spacing.sm,
     backgroundColor: colors.surface + "CC",

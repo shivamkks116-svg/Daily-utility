@@ -1,7 +1,7 @@
 // Web stub — no rewarded ads on web / Expo Go.
 export type RewardedResult = "earned" | "closed" | "unavailable";
 
-export function showRewardedAdResult(): Promise<RewardedResult> {
+export function showRewardedAdResult(_ssv?: { userId: string; customData: string }): Promise<RewardedResult> {
   return Promise.resolve("unavailable");
 }
 

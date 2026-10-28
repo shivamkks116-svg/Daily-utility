@@ -8,6 +8,7 @@ import os
 import logging
 import uuid
 import httpx
+import time
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
@@ -140,7 +141,12 @@ async def _enforce_integrity(user: dict):
         return
     ctx = _integrity.request_ctx.get()
     path = ctx.get("path", "")
-    if ctx.get("platform") == "web" or path.startswith(INTEGRITY_EXEMPT_PREFIXES):
+    platform = ctx.get("platform", "")
+    if platform == "web" or path.startswith(INTEGRITY_EXEMPT_PREFIXES):
+        return
+    # Old Play builds (before v1.0.5) send no X-Platform header and can't attest.
+    # Keep them working until INTEGRITY_STRICT=true is set after users update.
+    if platform != "android" and os.environ.get("INTEGRITY_STRICT", "").lower() != "true":
         return
     uid = user["user_id"]
     now = utcnow()
@@ -859,14 +865,71 @@ async def ai_quota(authorization: Optional[str] = Header(default=None)):
     }
 
 
+class AIRewardIn(BaseModel):
+    nonce: Optional[str] = Field(None, max_length=100)
+
+
+_ADMOB_KEYS: Dict[str, Any] = {"at": 0, "keys": {}}
+
+
+async def _admob_public_key(key_id: str):
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    if key_id not in _ADMOB_KEYS["keys"] or time.time() - _ADMOB_KEYS["at"] > 86400:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get("https://www.gstatic.com/admob/reward/verifier-keys.json")
+        _ADMOB_KEYS["keys"] = {str(k["keyId"]): load_pem_public_key(k["pem"].encode()) for k in r.json().get("keys", [])}
+        _ADMOB_KEYS["at"] = time.time()
+    return _ADMOB_KEYS["keys"].get(str(key_id))
+
+
+@api_router.get("/admob/ssv")
+async def admob_ssv(request: Request):
+    """AdMob server-side verification callback — Google calls this after a user
+    fully watches a rewarded ad. Signature is verified with Google's public keys."""
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from urllib.parse import parse_qs
+    qs = request.url.query
+    if "&signature=" not in qs:
+        raise HTTPException(400, "missing signature")
+    message = qs[: qs.index("&signature=")]
+    params = {k: v[0] for k, v in parse_qs(qs).items()}
+    sig = params.get("signature", "")
+    key = await _admob_public_key(params.get("key_id", ""))
+    if not key:
+        raise HTTPException(400, "unknown key")
+    try:
+        key.verify(_b64.urlsafe_b64decode(sig + "=" * (-len(sig) % 4)), message.encode(), ec.ECDSA(hashes.SHA256()))
+    except Exception:
+        raise HTTPException(400, "bad signature")
+    tx = params.get("transaction_id")
+    if tx and params.get("user_id"):
+        await db.ad_rewards.update_one(
+            {"transaction_id": tx},
+            {"$setOnInsert": {"transaction_id": tx, "user_id": params["user_id"], "nonce": params.get("custom_data", ""),
+                              "consumed": False, "created_at": utcnow()}},
+            upsert=True,
+        )
+    return {"ok": True}
+
+
 @api_router.post("/ai/reward")
-async def ai_reward(authorization: Optional[str] = Header(default=None)):
-    """Called by the client after a successful rewarded ad view. Grants +5 requests."""
+async def ai_reward(body: Optional[AIRewardIn] = None, authorization: Optional[str] = Header(default=None)):
+    """Grant +5 requests after a rewarded ad. Once AdMob SSV is configured (any
+    verified callback received), the grant requires a matching verified reward."""
     user = await require_user(authorization)
     key = _today_key()
     doc = await _get_quota_doc(user["user_id"])
     if int(doc.get("bonus", 0)) >= MAX_BONUS_PER_DAY:
         raise HTTPException(status_code=400, detail="Daily bonus limit reached. Come back tomorrow.")
+    if await db.ad_rewards.find_one({}, {"_id": 1}):
+        nonce = (body.nonce if body else None) or ""
+        claimed = await db.ad_rewards.find_one_and_update(
+            {"user_id": user["user_id"], "nonce": nonce, "consumed": False} if nonce else {"_id": None},
+            {"$set": {"consumed": True, "consumed_at": utcnow()}},
+        )
+        if not claimed:
+            raise HTTPException(status_code=409, detail="reward_pending")
     await db.ai_quota.update_one(
         {"user_id": user["user_id"], "date": key},
         {"$inc": {"bonus": REWARDED_AI_BONUS}},
