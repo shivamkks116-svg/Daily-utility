@@ -1109,3 +1109,4 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - Scan Document: app/pdf-toolkit/scan.tsx using react-native-document-scanner-plugin (ML Kit, no camera permission on Android).
 - Saved signatures: src/utils/pdf/savedSignatures.ts (3 max, on-device), row in sign.tsx.
 - Play Integrity keys set (PLAY_INTEGRITY_SA_JSON, PLAY_CLOUD_PROJECT_NUMBER, PLAY_CERT_DIGESTS) -> enforcement ON for X-Platform: android. Old builds without header pass until INTEGRITY_STRICT=true env is set. versionCode 10.
+- FIX: modules/expo-play-integrity/android/build.gradle uses SDK54 'expo-module-gradle-plugin' plugins block (old useExpoPublishing caused 'unknown property release for SoftwareComponent').
