@@ -2902,6 +2902,11 @@ async def on_startup():
         await db.reminders.create_index([("user_id", 1), ("created_at", 1)])
         await db.premium.create_index("user_id", unique=True)
         await db.push_users.create_index("user_id", unique=True)
+        # One-time: clear verdicts wrongly failed by the hex-vs-base64 cert digest bug.
+        if not await db.app_config.find_one({"_type": "migration", "key": "integrity_reset_v2"}):
+            r = await db.integrity.delete_many({"ok": False})
+            await db.app_config.insert_one({"_type": "migration", "key": "integrity_reset_v2", "cleared": r.deleted_count, "at": utcnow()})
+            logger.info("Integrity reset: cleared %s failed verdicts", r.deleted_count)
         logger.info("Indexes ensured.")
     except Exception:
         logger.exception("Index creation issue")

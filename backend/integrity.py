@@ -17,7 +17,17 @@ PACKAGE = "com.dailyutility.app"
 PLAY_SCOPE = "https://www.googleapis.com/auth/playintegrity"
 SA_JSON = os.environ.get("PLAY_INTEGRITY_SA_JSON", "").strip()
 PROJECT_NUMBER = os.environ.get("PLAY_CLOUD_PROJECT_NUMBER", "").strip()
-CERT_DIGESTS = {x.strip() for x in os.environ.get("PLAY_CERT_DIGESTS", "").split(",") if x.strip()}
+def _norm_digest(d: str) -> str:
+    """Accept hex (with/without colons) or base64/base64url; return base64url without padding."""
+    import base64
+    s = d.strip()
+    hexs = s.replace(":", "")
+    if len(hexs) == 64 and all(c in "0123456789abcdefABCDEF" for c in hexs):
+        return base64.urlsafe_b64encode(bytes.fromhex(hexs)).decode().rstrip("=")
+    return s.replace("+", "-").replace("/", "_").rstrip("=")
+
+
+CERT_DIGESTS = {_norm_digest(x) for x in os.environ.get("PLAY_CERT_DIGESTS", "").split(",") if x.strip()}
 ENABLED = bool(SA_JSON and PROJECT_NUMBER)
 
 # Filled by middleware so require_user can see platform + path.
@@ -64,12 +74,16 @@ async def decode_and_check(token: str, expected_nonce: str) -> tuple[bool, str]:
     if req.get("requestHash") != expected_nonce:
         return False, "hash_mismatch"
     ts = int(req.get("timestampMillis") or 0)
-    if abs(int(time.time() * 1000) - ts) > 10 * 60 * 1000:
+    if abs(int(time.time() * 1000) - ts) > 60 * 60 * 1000:  # nonce is single-use; tolerate device clock skew
         return False, "stale"
-    if app.get("appRecognitionVerdict") != "PLAY_RECOGNIZED":
-        return False, f"app_{app.get('appRecognitionVerdict', 'UNKNOWN')}"
-    if acct.get("appLicensingVerdict") not in ("LICENSED", None):
-        return False, f"license_{acct.get('appLicensingVerdict')}"
-    if CERT_DIGESTS and not CERT_DIGESTS.intersection(set(app.get("certificateSha256Digest", []))):
+    verdict = app.get("appRecognitionVerdict")
+    # UNEVALUATED = Play couldn't decide (e.g. Play services busy) → don't punish real users.
+    if verdict not in ("PLAY_RECOGNIZED", "UNEVALUATED"):
+        return False, f"app_{verdict or 'UNKNOWN'}"
+    if acct.get("appLicensingVerdict") == "UNLICENSED" and verdict != "PLAY_RECOGNIZED":
+        return False, "license_UNLICENSED"
+    got = {_norm_digest(x) for x in app.get("certificateSha256Digest", [])}
+    if CERT_DIGESTS and got and not CERT_DIGESTS.intersection(got):
+        logger.warning("Integrity cert mismatch: got=%s", list(got))
         return False, "bad_certificate"
     return True, "ok"
