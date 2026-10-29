@@ -61,8 +61,12 @@ async def decode_and_check(token: str, expected_nonce: str) -> tuple[bool, str]:
             json={"integrity_token": token},
         )
     if r.status_code != 200:
-        logger.warning("Integrity decode failed %s: %s", r.status_code, r.text[:200])
-        return False, "decode_failed"
+        logger.warning("Integrity decode failed %s: %s", r.status_code, r.text[:300])
+        # 400 = token itself invalid (garbage / forged) → fail.
+        # 401/403/5xx = our Google Cloud / Play Console setup → never punish users.
+        if r.status_code == 400:
+            return False, f"decode_invalid:{r.text[:160]}"
+        return True, f"decode_unavailable_{r.status_code}:{r.text[:160]}"
     payload = r.json().get("tokenPayloadExternal") or {}
     if isinstance(payload, str):
         payload = json.loads(payload)

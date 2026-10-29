@@ -1315,6 +1315,13 @@ async def integrity_config(authorization: Optional[str] = Header(default=None)):
     return {"enabled": True, "project_number": _integrity.PROJECT_NUMBER, "nonce": nonce}
 
 
+@api_router.get("/integrity/stats")
+async def integrity_stats():
+    """Anonymous diagnostics (no user data): latest verdict reasons."""
+    rows = await db.integrity_log.find({}, {"_id": 0}).sort("at", -1).to_list(15)
+    return {"enabled": _integrity.ENABLED, "cert_digests": len(_integrity.CERT_DIGESTS), "recent": rows}
+
+
 @api_router.post("/integrity/verify")
 async def integrity_verify(body: IntegrityVerifyIn, authorization: Optional[str] = Header(default=None)):
     user = await require_user(authorization)
@@ -1324,6 +1331,7 @@ async def integrity_verify(body: IntegrityVerifyIn, authorization: Optional[str]
     if not n:
         raise HTTPException(400, "Unknown or used nonce")
     ok, reason = await _integrity.decode_and_check(body.token, body.nonce)
+    await db.integrity_log.insert_one({"ok": ok, "reason": reason[:300], "at": utcnow()})
     await db.integrity.update_one(
         {"user_id": user["user_id"]},
         {"$set": {"ok": ok, "reason": reason, "checked_at": utcnow(), "until": utcnow() + timedelta(hours=24)}},
@@ -2903,9 +2911,9 @@ async def on_startup():
         await db.premium.create_index("user_id", unique=True)
         await db.push_users.create_index("user_id", unique=True)
         # One-time: clear verdicts wrongly failed by the hex-vs-base64 cert digest bug.
-        if not await db.app_config.find_one({"_type": "migration", "key": "integrity_reset_v2"}):
+        if not await db.app_config.find_one({"_type": "migration", "key": "integrity_reset_v3"}):
             r = await db.integrity.delete_many({"ok": False})
-            await db.app_config.insert_one({"_type": "migration", "key": "integrity_reset_v2", "cleared": r.deleted_count, "at": utcnow()})
+            await db.app_config.insert_one({"_type": "migration", "key": "integrity_reset_v3", "cleared": r.deleted_count, "at": utcnow()})
             logger.info("Integrity reset: cleared %s failed verdicts", r.deleted_count)
         logger.info("Indexes ensured.")
     except Exception:
