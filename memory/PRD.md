@@ -1112,3 +1112,4 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - FIX: modules/expo-play-integrity/android/build.gradle uses SDK54 'expo-module-gradle-plugin' plugins block (old useExpoPublishing caused 'unknown property release for SoftwareComponent').
 - FIX: integrity cert digest normalised (hex w/ colons -> base64url); UNEVALUATED verdicts allowed; stale window 60m; startup migration integrity_reset_v2 clears ok:false verdicts.
 - Integrity: ADMIN_EMAILS users exempt (debug builds from Android Studio); reset v4.
+- Integrity v5: block ONLY on appRecognitionVerdict UNRECOGNIZED_VERSION; all else allowed + logged detail; reset v5.

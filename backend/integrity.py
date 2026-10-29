@@ -62,32 +62,21 @@ async def decode_and_check(token: str, expected_nonce: str) -> tuple[bool, str]:
         )
     if r.status_code != 200:
         logger.warning("Integrity decode failed %s: %s", r.status_code, r.text[:300])
-        # 400 = token itself invalid (garbage / forged) → fail.
-        # 401/403/5xx = our Google Cloud / Play Console setup → never punish users.
-        if r.status_code == 400:
-            return False, f"decode_invalid:{r.text[:160]}"
-        return True, f"decode_unavailable_{r.status_code}:{r.text[:160]}"
+        return True, f"allow_decode_{r.status_code}:{r.text[:160]}"
     payload = r.json().get("tokenPayloadExternal") or {}
     if isinstance(payload, str):
         payload = json.loads(payload)
-    req = payload.get("requestDetails", {})
     app = payload.get("appIntegrity", {})
-    acct = payload.get("accountDetails", {})
-    if req.get("requestPackageName") != PACKAGE:
-        return False, "wrong_package"
-    if req.get("requestHash") != expected_nonce:
-        return False, "hash_mismatch"
-    ts = int(req.get("timestampMillis") or 0)
-    if abs(int(time.time() * 1000) - ts) > 60 * 60 * 1000:  # nonce is single-use; tolerate device clock skew
-        return False, "stale"
     verdict = app.get("appRecognitionVerdict")
-    # UNEVALUATED = Play couldn't decide (e.g. Play services busy) → don't punish real users.
-    if verdict not in ("PLAY_RECOGNIZED", "UNEVALUATED"):
-        return False, f"app_{verdict or 'UNKNOWN'}"
-    if acct.get("appLicensingVerdict") == "UNLICENSED" and verdict != "PLAY_RECOGNIZED":
-        return False, "license_UNLICENSED"
-    got = {_norm_digest(x) for x in app.get("certificateSha256Digest", [])}
-    if CERT_DIGESTS and got and not CERT_DIGESTS.intersection(got):
-        logger.warning("Integrity cert mismatch: got=%s", list(got))
-        return False, "bad_certificate"
-    return True, "ok"
+    # Block ONLY when Google explicitly says the binary is not the one on Play
+    # (modded / re-signed APK). Everything else is allowed and just logged.
+    if verdict == "UNRECOGNIZED_VERSION":
+        return False, "app_UNRECOGNIZED_VERSION"
+    detail = {
+        "verdict": verdict,
+        "license": payload.get("accountDetails", {}).get("appLicensingVerdict"),
+        "pkg": payload.get("requestDetails", {}).get("requestPackageName"),
+        "hash_ok": payload.get("requestDetails", {}).get("requestHash") == expected_nonce,
+        "cert_match": (not CERT_DIGESTS) or bool(CERT_DIGESTS.intersection({_norm_digest(x) for x in app.get("certificateSha256Digest", [])})),
+    }
+    return True, f"ok {json.dumps(detail)}"
