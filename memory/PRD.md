@@ -1111,3 +1111,4 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - Play Integrity keys set (PLAY_INTEGRITY_SA_JSON, PLAY_CLOUD_PROJECT_NUMBER, PLAY_CERT_DIGESTS) -> enforcement ON for X-Platform: android. Old builds without header pass until INTEGRITY_STRICT=true env is set. versionCode 10.
 - FIX: modules/expo-play-integrity/android/build.gradle uses SDK54 'expo-module-gradle-plugin' plugins block (old useExpoPublishing caused 'unknown property release for SoftwareComponent').
 - FIX: integrity cert digest normalised (hex w/ colons -> base64url); UNEVALUATED verdicts allowed; stale window 60m; startup migration integrity_reset_v2 clears ok:false verdicts.
+- Integrity: ADMIN_EMAILS users exempt (debug builds from Android Studio); reset v4.

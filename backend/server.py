@@ -149,6 +149,8 @@ async def _enforce_integrity(user: dict):
     if platform != "android" and os.environ.get("INTEGRITY_STRICT", "").lower() != "true":
         return
     uid = user["user_id"]
+    if (user.get("email") or "").lower() in ADMIN_EMAILS:
+        return  # owner / testers can run debug builds from Android Studio
     now = utcnow()
     cached = _integrity_cache.get(uid)
     if not cached or cached[2] < now:
@@ -1331,6 +1333,8 @@ async def integrity_verify(body: IntegrityVerifyIn, authorization: Optional[str]
     if not n:
         raise HTTPException(400, "Unknown or used nonce")
     ok, reason = await _integrity.decode_and_check(body.token, body.nonce)
+    if not ok and (user.get("email") or "").lower() in ADMIN_EMAILS:
+        ok, reason = True, f"admin_exempt({reason[:100]})"
     await db.integrity_log.insert_one({"ok": ok, "reason": reason[:300], "at": utcnow()})
     await db.integrity.update_one(
         {"user_id": user["user_id"]},
@@ -2911,9 +2915,9 @@ async def on_startup():
         await db.premium.create_index("user_id", unique=True)
         await db.push_users.create_index("user_id", unique=True)
         # One-time: clear verdicts wrongly failed by the hex-vs-base64 cert digest bug.
-        if not await db.app_config.find_one({"_type": "migration", "key": "integrity_reset_v3"}):
+        if not await db.app_config.find_one({"_type": "migration", "key": "integrity_reset_v4"}):
             r = await db.integrity.delete_many({"ok": False})
-            await db.app_config.insert_one({"_type": "migration", "key": "integrity_reset_v3", "cleared": r.deleted_count, "at": utcnow()})
+            await db.app_config.insert_one({"_type": "migration", "key": "integrity_reset_v4", "cleared": r.deleted_count, "at": utcnow()})
             logger.info("Integrity reset: cleared %s failed verdicts", r.deleted_count)
         logger.info("Indexes ensured.")
     except Exception:
