@@ -1113,3 +1113,6 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 - FIX: integrity cert digest normalised (hex w/ colons -> base64url); UNEVALUATED verdicts allowed; stale window 60m; startup migration integrity_reset_v2 clears ok:false verdicts.
 - Integrity: ADMIN_EMAILS users exempt (debug builds from Android Studio); reset v4.
 - Integrity v5: block ONLY on appRecognitionVerdict UNRECOGNIZED_VERSION; all else allowed + logged detail; reset v5.
+
+## Legal pages (Razorpay)
+- backend/legal/*.html served at /api/legal/{privacy,terms,refund,shipping,contact,pricing} (+style.css). Address placeholder [YOUR BUSINESS ADDRESS...] in all pages must be replaced. Refund: full within 7 days, after that cancel only.

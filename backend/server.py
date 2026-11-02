@@ -1379,6 +1379,30 @@ def _read_static(name: str) -> str:
 
 # Root-level routes (work when the backend is directly reachable, e.g. on emergent.host domain).
 
+# ─── Public legal pages (Razorpay / Play verification) ───────────────
+_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "legal")
+_LEGAL_CSS = (
+    "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:820px;margin:0 auto;padding:24px;color:#1b1b1b;line-height:1.6}"
+    "h1,h2,a{color:#1F5F3F}h2{margin-top:28px}nav a{margin-right:14px;font-size:14px;display:inline-block}"
+    "footer{margin-top:40px;font-size:13px;color:#666;border-top:1px solid #ddd;padding-top:12px}"
+    "table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}"
+)
+
+
+@api_router.get("/legal/{slug}")
+async def legal_page(slug: str):
+    from fastapi.responses import HTMLResponse
+    name = slug.removesuffix(".html")
+    if name == "style.css":
+        from fastapi.responses import Response
+        return Response(_LEGAL_CSS, media_type="text/css")
+    if name not in {"privacy", "terms", "refund", "shipping", "contact", "pricing"}:
+        raise HTTPException(404, "Not found")
+    with open(os.path.join(_LEGAL_DIR, f"{name}.html"), encoding="utf-8") as f:
+        html = f.read()
+    return HTMLResponse(html)
+
+
 # ─── AdMob app-ads.txt ───────────────────────────────────────────────
 # Google's AdMob crawler fetches this file from the root of the
 # developer's declared website to verify that the AdMob publisher ID
