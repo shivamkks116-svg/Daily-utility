@@ -3,8 +3,8 @@
  * Android uses Google's ML Kit scanner (auto edge detection, crop, filters,
  * multi-page) — no camera permission needed because Play services handles it.
  */
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Alert, Image, ScrollView, Platform, Pressable } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, StyleSheet, Alert, Image, ScrollView, Platform, Pressable, ActivityIndicator } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +14,14 @@ import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState } from "@/src
 import { InstantOverlay } from "@/src/components/InstantOverlay";
 import { getPdfSize } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
+import { api } from "@/src/api/client";
+
+type FilterMode = "original" | "bw" | "boost";
+const FILTERS: { key: FilterMode; label: string; icon: any }[] = [
+  { key: "original", label: "Original", icon: "image-outline" },
+  { key: "bw", label: "Black & White", icon: "contrast-outline" },
+  { key: "boost", label: "Colour Boost", icon: "color-palette-outline" },
+];
 
 let Scanner: any = null;
 if (Platform.OS !== "web") {
@@ -25,6 +33,33 @@ export default function ScanToPdfScreen() {
   const insets = useSafeAreaInsets();
   const [pages, setPages] = useState<string[]>([]); // data:image/jpeg;base64,...
   const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<FilterMode>("original");
+  const [filtering, setFiltering] = useState(false);
+  // cache[mode][originalSrc] = filtered data URI
+  const cache = useRef<Record<string, Record<string, string>>>({ bw: {}, boost: {} });
+  const [, bump] = useState(0);
+
+  const shown = (src: string) => (filter === "original" ? src : cache.current[filter][src] || src);
+
+  const applyFilter = async (mode: FilterMode, list: string[] = pages) => {
+    setFilter(mode);
+    if (mode === "original") return;
+    const todo = list.filter((s) => !cache.current[mode][s]);
+    if (!todo.length) return;
+    setFiltering(true);
+    try {
+      for (const src of todo) {
+        const r = await api<{ image: string }>("/scan/filter", { method: "POST", body: { image: src, mode } });
+        cache.current[mode][src] = r.image;
+        bump((n) => n + 1);
+      }
+    } catch {
+      Alert.alert("Filter failed", "Internet check karein aur dobara try karein.");
+      setFilter("original");
+    } finally {
+      setFiltering(false);
+    }
+  };
 
   const scan = async () => {
     if (!Scanner) {
@@ -37,7 +72,9 @@ export default function ScanToPdfScreen() {
         responseType: "base64",
       });
       if (status === "cancel" || !scannedImages?.length) return;
-      setPages((p) => [...p, ...scannedImages.map((b: string) => (b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`))]);
+      const added = scannedImages.map((b: string) => (b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`));
+      setPages((p) => [...p, ...added]);
+      if (filter !== "original") applyFilter(filter, added);
     } catch (e) {
       Alert.alert("Scan failed", (e as Error)?.message || String(e));
     }
@@ -53,7 +90,7 @@ export default function ScanToPdfScreen() {
         .page { width:210mm; height:297mm; page-break-after:always; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .page:last-child { page-break-after:auto; }
         img { max-width:100%; max-height:100%; object-fit:contain; }
-      </style></head><body>${pages.map((src) => `<div class="page"><img src="${src}"/></div>`).join("")}</body></html>`;
+      </style></head><body>${pages.map((src) => `<div class="page"><img src="${shown(src)}"/></div>`).join("")}</body></html>`;
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const size = await getPdfSize(uri);
       const name = `Scan-${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -79,10 +116,34 @@ export default function ScanToPdfScreen() {
           />
         ) : (
           <>
+            <Text style={styles.sectionLabel}>Filter</Text>
+            <View style={styles.filterRow}>
+              {FILTERS.map((f) => {
+                const active = filter === f.key;
+                return (
+                  <Pressable
+                    key={f.key}
+                    testID={`scan-filter-${f.key}`}
+                    disabled={filtering}
+                    onPress={() => applyFilter(f.key)}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                  >
+                    <Ionicons name={f.icon} size={18} color={active ? colors.onBrandPrimary : colors.onSurface} />
+                    <Text style={[styles.filterText, active && { color: colors.onBrandPrimary }]} numberOfLines={1}>{f.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {filtering ? (
+              <View style={styles.filteringRow}>
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
+                <Text style={styles.filteringText}>Filter lag raha hai…</Text>
+              </View>
+            ) : null}
             <View style={styles.grid}>
               {pages.map((src, i) => (
                 <View key={i} style={styles.thumb}>
-                  <Image source={{ uri: src }} style={styles.thumbImg} resizeMode="cover" />
+                  <Image source={{ uri: shown(src) }} style={styles.thumbImg} resizeMode="cover" />
                   <Text style={styles.thumbNum}>{i + 1}</Text>
                   <Pressable hitSlop={8} onPress={() => setPages((p) => p.filter((_, j) => j !== i))} style={styles.thumbDel}>
                     <Ionicons name="close" size={14} color={colors.onBrandPrimary} />
@@ -91,7 +152,7 @@ export default function ScanToPdfScreen() {
               ))}
             </View>
             <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-              <PrimaryButton icon="document" label="Create PDF" onPress={build} loading={busy} />
+              <PrimaryButton icon="document" label="Create PDF" onPress={build} loading={busy} disabled={filtering} />
               <SecondaryButton icon="add" label="Scan more pages" onPress={scan} />
             </View>
           </>
@@ -104,6 +165,16 @@ export default function ScanToPdfScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.surface },
+  sectionLabel: { marginTop: spacing.md, color: colors.onSurfaceSecondary, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  filterRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  filterChip: {
+    flex: 1, minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center", gap: 2, paddingHorizontal: 4,
+  },
+  filterChipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  filterText: { color: colors.onSurface, fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
+  filteringRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm },
+  filteringText: { color: colors.onSurfaceSecondary, fontSize: fontSize.sm },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
   thumb: {
     width: "31%", aspectRatio: 0.71, borderRadius: radius.sm, overflow: "hidden",

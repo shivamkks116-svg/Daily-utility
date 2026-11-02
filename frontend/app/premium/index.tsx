@@ -23,7 +23,8 @@ import {
   REVENUECAT_ENTITLEMENT_IDENTIFIER,
 } from "@/src/subscription/RevenueCat";
 import { useFeatureFlags } from "@/src/features/flags";
-import { api } from "@/src/api/client";
+import { api, API_BASE } from "@/src/api/client";
+import { RazorpayPay } from "@/src/components/RazorpayPay";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -522,6 +523,7 @@ export default function PremiumScreen() {
         </View>
 
         {/* Restore + legal */}
+        <RazorpayPay />
         <View style={styles.legalWrap}>
           <Pressable onPress={doRestore} style={styles.restore}>
             {sub.isRestoring ? (
@@ -531,12 +533,24 @@ export default function PremiumScreen() {
             )}
           </Pressable>
           <View style={styles.legalRow}>
-            <Pressable onPress={() => openLink("https://daily-utility-ai.emergent.host/terms")}>
+            <Pressable onPress={() => openLink(`${API_BASE}/legal/terms`)}>
               <Text style={styles.legalLink}>Terms</Text>
             </Pressable>
             <Text style={styles.legalDot}>·</Text>
-            <Pressable onPress={() => openLink("https://daily-utility-ai.emergent.host/privacy")}>
+            <Pressable onPress={() => openLink(`${API_BASE}/legal/privacy`)}>
               <Text style={styles.legalLink}>Privacy</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable testID="premium-refund-link" onPress={() => openLink(`${API_BASE}/legal/refund`)}>
+              <Text style={styles.legalLink}>Refund</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable onPress={() => openLink(`${API_BASE}/legal/pricing`)}>
+              <Text style={styles.legalLink}>Pricing</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable onPress={() => openLink(`${API_BASE}/legal/contact`)}>
+              <Text style={styles.legalLink}>Contact</Text>
             </Pressable>
           </View>
           <Text style={styles.legalNote}>
@@ -916,7 +930,7 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     textDecorationLine: "underline",
   },
-  legalRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  legalRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm, alignItems: "center" },
   legalLink: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, textDecorationLine: "underline" },
   legalDot: { color: colors.onSurfaceTertiary },
   legalNote: {

@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import json
 import httpx
 import time
 from pathlib import Path
@@ -1265,6 +1266,148 @@ async def delete_reminder(rid: str, authorization: Optional[str] = Header(defaul
     return {"ok": True}
 
 
+# ---------------------- Razorpay (alternative billing) ----------------------
+from emailer import send_email as _send_email  # noqa: E402
+import hashlib as _hashlib  # noqa: E402
+import hmac as _hmac  # noqa: E402
+from html import escape as _esc  # noqa: E402
+
+# Server-owned prices in paise. Never trust a client amount.
+RZP_PLANS = {"monthly": {"amount": 9900, "days": 31, "label": "Premium Monthly"},
+             "yearly": {"amount": 79900, "days": 366, "label": "Premium Yearly"}}
+
+
+def _rzp_keys():
+    kid, sec = os.environ.get("RAZORPAY_KEY_ID", ""), os.environ.get("RAZORPAY_KEY_SECRET", "")
+    if not kid or not sec:
+        raise HTTPException(503, "Razorpay is not configured yet")
+    return kid, sec
+
+
+class RzpOrderIn(BaseModel):
+    plan: str
+
+
+class RzpVerifyIn(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+@api_router.get("/razorpay/plans")
+async def rzp_plans():
+    return {"enabled": bool(os.environ.get("RAZORPAY_KEY_ID")),
+            "plans": {k: {"amount": v["amount"], "label": v["label"]} for k, v in RZP_PLANS.items()}}
+
+
+@api_router.post("/razorpay/order")
+async def rzp_create_order(body: RzpOrderIn, authorization: Optional[str] = Header(default=None)):
+    user = await require_user(authorization)
+    plan = RZP_PLANS.get(body.plan)
+    if not plan:
+        raise HTTPException(400, "Unknown plan")
+    kid, sec = _rzp_keys()
+    receipt = f"dh_{uuid.uuid4().hex[:20]}"
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.post("https://api.razorpay.com/v1/orders", auth=(kid, sec), json={
+            "amount": plan["amount"], "currency": "INR", "receipt": receipt, "payment_capture": 1,
+            "notes": {"plan": body.plan, "user_id": user["user_id"]}})
+    if r.status_code >= 400:
+        logger.warning("Razorpay order failed %s %s", r.status_code, r.text[:200])
+        raise HTTPException(502, "Could not start payment")
+    order = r.json()
+    await db.rzp_orders.insert_one({
+        "order_id": order["id"], "receipt": receipt, "user_id": user["user_id"], "email": user.get("email"),
+        "name": user.get("name"), "plan": body.plan, "amount": plan["amount"], "status": "created", "created_at": utcnow()})
+    return {"order_id": order["id"]}
+
+
+@api_router.get("/razorpay/checkout/{order_id}")
+async def rzp_checkout_page(order_id: str):
+    """Hosted checkout page opened in the in-app browser."""
+    from fastapi.responses import HTMLResponse
+    o = await db.rzp_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not o or o["status"] == "paid":
+        return HTMLResponse("<p>This payment link is no longer valid.</p><a href='dailyhubai://pay?status=closed'>Back to app</a>", 404)
+    kid, _ = _rzp_keys()
+    opts = json.dumps({
+        "key": kid, "amount": o["amount"], "currency": "INR", "order_id": order_id,
+        "name": "DailyHub AI", "description": RZP_PLANS[o["plan"]]["label"],
+        "prefill": {"email": o.get("email") or "", "name": o.get("name") or ""}, "theme": {"color": "#1F5F3F"}})
+    html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script></head>
+<body style="font-family:Arial;text-align:center;padding:40px"><p id="m">Opening secure payment…</p>
+<script>
+var o={opts};
+function back(s){{location.href='dailyhubai://pay?status='+s;}}
+o.handler=function(r){{document.getElementById('m').innerText='Confirming payment…';
+ fetch('verify',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(r)}})
+ .then(function(x){{return x.json()}}).then(function(j){{back(j.ok?'success':'failed')}}).catch(function(){{back('pending')}});}};
+o.modal={{ondismiss:function(){{back('closed')}}}};
+var rz=new Razorpay(o); rz.on('payment.failed',function(){{back('failed')}}); rz.open();
+</script></body></html>"""
+    return HTMLResponse(html)
+
+
+async def _rzp_mark_paid(order_id: str, payment_id: str):
+    o = await db.rzp_orders.find_one_and_update(
+        {"order_id": order_id, "status": {"$ne": "paid"}},
+        {"$set": {"status": "paid", "payment_id": payment_id, "paid_at": utcnow()}})
+    if not o:
+        return  # already processed (idempotent)
+    plan = RZP_PLANS[o["plan"]]
+    cur = await db.premium.find_one({"user_id": o["user_id"]}, {"_id": 0, "expires_at": 1})
+    start = utcnow()
+    if cur and isinstance(cur.get("expires_at"), datetime):
+        exp = cur["expires_at"] if cur["expires_at"].tzinfo else cur["expires_at"].replace(tzinfo=timezone.utc)
+        start = max(start, exp)
+    expires = start + timedelta(days=plan["days"])
+    await db.premium.update_one({"user_id": o["user_id"]}, {"$set": {
+        "premium": True, "plan": o["plan"], "source": "razorpay", "activated_at": utcnow(), "expires_at": expires}}, upsert=True)
+    if o.get("email"):
+        rupees = f"₹{o['amount'] / 100:.2f}"
+        html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#1b1b1b">'
+                f'<h2 style="color:#1F5F3F">Payment receipt</h2><p>Hi {_esc(o.get("name") or "there")}, thank you for upgrading to DailyHub AI Premium.</p>'
+                f'<table cellpadding="6" style="border-collapse:collapse;font-size:14px">'
+                f'<tr><td><b>Plan</b></td><td>{_esc(plan["label"])}</td></tr>'
+                f'<tr><td><b>Amount</b></td><td>{rupees} (INR, incl. taxes)</td></tr>'
+                f'<tr><td><b>Payment ID</b></td><td>{_esc(payment_id)}</td></tr>'
+                f'<tr><td><b>Order ID</b></td><td>{_esc(order_id)}</td></tr>'
+                f'<tr><td><b>Valid until</b></td><td>{expires.strftime("%d %b %Y")}</td></tr></table>'
+                f'<p>Need a refund? Full refund within 7 days of purchase. Just reply to this email with your Payment ID.</p>'
+                f'<p style="font-size:12px;color:#888">Sent by DailyHub AI. We never ask for your password or card details by email.</p>'
+                f'</td></tr></table>')
+        await _send_email(to=o["email"], subject="Your DailyHub AI Premium receipt", html=html)
+
+
+@api_router.post("/razorpay/checkout/verify")
+async def rzp_verify(body: RzpVerifyIn):
+    _, sec = _rzp_keys()
+    o = await db.rzp_orders.find_one({"order_id": body.razorpay_order_id}, {"_id": 0, "order_id": 1})
+    if not o:
+        raise HTTPException(404, "Order not found")
+    expected = _hmac.new(sec.encode(), f'{o["order_id"]}|{body.razorpay_payment_id}'.encode(), _hashlib.sha256).hexdigest()
+    if not _hmac.compare_digest(expected, body.razorpay_signature):
+        raise HTTPException(400, "Invalid payment signature")
+    await _rzp_mark_paid(o["order_id"], body.razorpay_payment_id)
+    return {"ok": True}
+
+
+@api_router.post("/razorpay/webhook")
+async def rzp_webhook(request: Request):
+    secret = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+    raw = await request.body()
+    sig = request.headers.get("x-razorpay-signature", "")
+    if not secret or not _hmac.compare_digest(_hmac.new(secret.encode(), raw, _hashlib.sha256).hexdigest(), sig):
+        raise HTTPException(400, "Invalid webhook signature")
+    ev = json.loads(raw)
+    if ev.get("event") in ("payment.captured", "order.paid"):
+        p = ev["payload"]["payment"]["entity"]
+        if p.get("order_id"):
+            await _rzp_mark_paid(p["order_id"], p["id"])
+    return {"ok": True}
+
+
 # ---------------------- Premium (MOCKED billing) ----------------------
 @api_router.get("/premium/status")
 async def premium_status(authorization: Optional[str] = Header(default=None)):
@@ -1272,9 +1415,14 @@ async def premium_status(authorization: Optional[str] = Header(default=None)):
     doc = await db.premium.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not doc:
         return {"premium": False, "plan": None, "activated_at": None}
+    exp = doc.get("expires_at")
+    if isinstance(exp, datetime) and (exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)) < utcnow():
+        return {"premium": False, "plan": doc.get("plan"), "activated_at": None, "expired": True}
     return {
         "premium": bool(doc.get("premium")),
         "plan": doc.get("plan"),
+        "source": doc.get("source"),
+        "expires_at": exp.isoformat() if isinstance(exp, datetime) else None,
         "activated_at": doc.get("activated_at").isoformat() if isinstance(doc.get("activated_at"), datetime) else doc.get("activated_at"),
     }
 
@@ -2904,6 +3052,51 @@ async def _daily_reminder_loop():
         except Exception:
             logger.exception("daily reminder loop error")
         await _asyncio.sleep(60)
+
+
+# ---------------------- Scanner filters ----------------------
+class ScanFilterIn(BaseModel):
+    image: str  # base64 JPEG (optionally data: URI)
+    mode: str  # "bw" | "boost"
+
+
+@api_router.post("/scan/filter")
+async def scan_filter(payload: ScanFilterIn, authorization: Optional[str] = Header(default=None)):
+    await require_user(authorization)
+    if payload.mode not in ("bw", "boost"):
+        raise HTTPException(400, "Unknown filter")
+    import base64 as _b64
+    import io as _io
+    from PIL import Image as _Img, ImageEnhance, ImageFilter, ImageOps
+
+    raw = payload.image.split(",", 1)[1] if payload.image.startswith("data:") else payload.image
+    if len(raw) > 20_000_000:
+        raise HTTPException(413, "Image too large")
+    try:
+        img = _Img.open(_io.BytesIO(_b64.b64decode(raw)))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except Exception:
+        raise HTTPException(400, "Invalid image")
+
+    if payload.mode == "bw":
+        # Document look: grayscale, flatten uneven lighting, then high contrast.
+        g = img.convert("L")
+        bg = g.filter(ImageFilter.GaussianBlur(radius=max(g.size) // 40 or 1))
+        import numpy as _np
+        ga = _np.asarray(g, dtype=_np.float32)
+        ba = _np.maximum(_np.asarray(bg, dtype=_np.float32), 1.0)
+        flat = _Img.fromarray(_np.clip(ga / ba * 255.0, 0, 255).astype(_np.uint8))
+        flat = ImageOps.autocontrast(flat, cutoff=2)
+        out = flat.point(lambda p: 255 if p > 170 else int(p * 0.6))
+    else:
+        out = ImageOps.autocontrast(img, cutoff=1)
+        out = ImageEnhance.Color(out).enhance(1.5)
+        out = ImageEnhance.Contrast(out).enhance(1.2)
+        out = ImageEnhance.Sharpness(out).enhance(1.4)
+
+    buf = _io.BytesIO()
+    out.convert("RGB").save(buf, "JPEG", quality=85, optimize=True)
+    return {"image": "data:image/jpeg;base64," + _b64.b64encode(buf.getvalue()).decode()}
 
 
 # ---------------------- Startup ----------------------

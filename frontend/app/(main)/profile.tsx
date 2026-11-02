@@ -22,6 +22,8 @@ import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import { getAppVersion } from "@/src/utils/appVersion";
 import { applyThemeAndReload } from "@/src/theme/apply";
 import { getDailyReminderPref, requestAndRegister, setDailyReminderPref } from "@/src/utils/push";
+import * as WebBrowser from "expo-web-browser";
+import { API_BASE } from "@/src/api/client";
 import {
   ThemeMode,
   LanguageCode,
@@ -501,6 +503,24 @@ export default function ProfileScreen() {
             label="Terms & Conditions"
             testID="row-terms"
             onPress={() => router.push("/legal/terms")}
+          />
+          <Row
+            icon="cash-outline"
+            label="Refund & Cancellation"
+            testID="row-refund"
+            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/legal/refund`)}
+          />
+          <Row
+            icon="pricetag-outline"
+            label="Pricing"
+            testID="row-pricing"
+            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/legal/pricing`)}
+          />
+          <Row
+            icon="call-outline"
+            label="Contact Us"
+            testID="row-contact"
+            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/legal/contact`)}
           />
         </Section>
 

@@ -13,6 +13,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState, Platform } from "react-native";
 import Constants from "expo-constants";
 import { logPurchase } from "@/src/analytics/metaEvents";
+import { api } from "@/src/api/client";
 
 const isExpoGo = Constants.executionEnvironment === "storeClient";
 const isWeb = Platform.OS === "web";
@@ -152,6 +153,15 @@ function humanizePurchasesError(e: unknown): { code: string; message: string; us
 
 export function SubscriptionProvider({ userId, children }: { userId?: string | null; children: React.ReactNode }) {
   const [customerInfo, setCustomerInfo] = useState<RCCustomerInfo | null>(null);
+  // Premium bought outside Play (Razorpay) lives on our server.
+  const [serverPremium, setServerPremium] = useState(false);
+  const refreshServerPremium = useCallback(async () => {
+    try {
+      const r = await api<{ premium: boolean }>("/premium/status");
+      setServerPremium(!!r.premium);
+    } catch {}
+  }, []);
+  useEffect(() => { void refreshServerPremium(); }, [refreshServerPremium]);
   const [offerings, setOfferings] = useState<RCOfferings | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [isPurchasing, setPurchasing] = useState(false);
@@ -161,6 +171,7 @@ export function SubscriptionProvider({ userId, children }: { userId?: string | n
   const identityRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
+    void refreshServerPremium();
     if (!RC) { setLoading(false); return; }
     try {
       const [info, offs] = await Promise.all([
@@ -309,7 +320,7 @@ export function SubscriptionProvider({ userId, children }: { userId?: string | n
 
   // Premium status is derived ONLY from RevenueCat customerInfo — never from
   // local state, never faked. This is the single source of truth.
-  const isSubscribed = !!customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
+  const isSubscribed = serverPremium || !!customerInfo?.entitlements?.active?.[REVENUECAT_ENTITLEMENT_IDENTIFIER];
   const originalAppUserId = customerInfo?.originalAppUserId;
   const identityReady = !!originalAppUserId && !String(originalAppUserId).startsWith("$RCAnonymousID:");
   const packages: RCPackage[] = offerings ? extractPackages(offerings) : [];

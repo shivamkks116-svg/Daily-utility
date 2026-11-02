@@ -1116,3 +1116,13 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## Legal pages (Razorpay)
 - backend/legal/*.html served at /api/legal/{privacy,terms,refund,shipping,contact,pricing} (+style.css). Address placeholder [YOUR BUSINESS ADDRESS...] in all pages must be replaced. Refund: full within 7 days, after that cancel only.
+
+## Razorpay alt billing + receipts
+- Backend: /api/razorpay/plans|order|checkout/{id}|checkout/verify|webhook; RZP_PLANS monthly ₹99 (31d) / yearly ₹799 (366d) one-time; grants db.premium {source:razorpay, expires_at}; /premium/status honours expiry. Receipt email via backend/emailer.py (Emergent Resend, EMAIL_FROM_NAME=DailyHub AI).
+- Frontend: src/components/RazorpayPay.tsx on premium screen (WebBrowser.openAuthSessionAsync -> dailyhubai://pay); RevenueCat provider isSubscribed = serverPremium || RC. Legal links (refund/pricing/contact) in premium + profile.
+- Needs secrets RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET. Webhook URL: https://daily-utility-ai.emergent.host/api/razorpay/webhook
+
+## Scanner Filters (June 2026)
+- Scan Document screen: after scanning, choose Original / Black & White / Colour Boost (applies to all pages, preview thumbnails update, PDF uses filtered images).
+- Backend: POST /api/scan/filter {image(base64), mode: bw|boost} (auth required, Pillow+numpy). BW flattens uneven lighting + high contrast.
+- Native scanner requires Android build; filter endpoint agent-tested (200/400/401).
