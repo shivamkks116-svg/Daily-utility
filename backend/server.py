@@ -3054,51 +3054,6 @@ async def _daily_reminder_loop():
         await _asyncio.sleep(60)
 
 
-# ---------------------- Scanner filters ----------------------
-class ScanFilterIn(BaseModel):
-    image: str  # base64 JPEG (optionally data: URI)
-    mode: str  # "bw" | "boost"
-
-
-@api_router.post("/scan/filter")
-async def scan_filter(payload: ScanFilterIn, authorization: Optional[str] = Header(default=None)):
-    await require_user(authorization)
-    if payload.mode not in ("bw", "boost"):
-        raise HTTPException(400, "Unknown filter")
-    import base64 as _b64
-    import io as _io
-    from PIL import Image as _Img, ImageEnhance, ImageFilter, ImageOps
-
-    raw = payload.image.split(",", 1)[1] if payload.image.startswith("data:") else payload.image
-    if len(raw) > 20_000_000:
-        raise HTTPException(413, "Image too large")
-    try:
-        img = _Img.open(_io.BytesIO(_b64.b64decode(raw)))
-        img = ImageOps.exif_transpose(img).convert("RGB")
-    except Exception:
-        raise HTTPException(400, "Invalid image")
-
-    if payload.mode == "bw":
-        # Document look: grayscale, flatten uneven lighting, then high contrast.
-        g = img.convert("L")
-        bg = g.filter(ImageFilter.GaussianBlur(radius=max(g.size) // 40 or 1))
-        import numpy as _np
-        ga = _np.asarray(g, dtype=_np.float32)
-        ba = _np.maximum(_np.asarray(bg, dtype=_np.float32), 1.0)
-        flat = _Img.fromarray(_np.clip(ga / ba * 255.0, 0, 255).astype(_np.uint8))
-        flat = ImageOps.autocontrast(flat, cutoff=2)
-        out = flat.point(lambda p: 255 if p > 170 else int(p * 0.6))
-    else:
-        out = ImageOps.autocontrast(img, cutoff=1)
-        out = ImageEnhance.Color(out).enhance(1.5)
-        out = ImageEnhance.Contrast(out).enhance(1.2)
-        out = ImageEnhance.Sharpness(out).enhance(1.4)
-
-    buf = _io.BytesIO()
-    out.convert("RGB").save(buf, "JPEG", quality=85, optimize=True)
-    return {"image": "data:image/jpeg;base64," + _b64.b64encode(buf.getvalue()).decode()}
-
-
 # ---------------------- Startup ----------------------
 app.include_router(api_router)
 

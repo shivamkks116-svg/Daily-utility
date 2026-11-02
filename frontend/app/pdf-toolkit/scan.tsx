@@ -14,7 +14,7 @@ import { ToolkitHeader, PrimaryButton, SecondaryButton, EmptyState } from "@/src
 import { InstantOverlay } from "@/src/components/InstantOverlay";
 import { getPdfSize } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
-import { api } from "@/src/api/client";
+import { ScanFilterEngine, ScanFilterEngineRef } from "@/src/components/ScanFilterEngine";
 
 type FilterMode = "original" | "bw" | "boost";
 const FILTERS: { key: FilterMode; label: string; icon: any }[] = [
@@ -38,6 +38,7 @@ export default function ScanToPdfScreen() {
   // cache[mode][originalSrc] = filtered data URI
   const cache = useRef<Record<string, Record<string, string>>>({ bw: {}, boost: {} });
   const [, bump] = useState(0);
+  const engine = useRef<ScanFilterEngineRef>(null);
 
   const shown = (src: string) => (filter === "original" ? src : cache.current[filter][src] || src);
 
@@ -49,12 +50,11 @@ export default function ScanToPdfScreen() {
     setFiltering(true);
     try {
       for (const src of todo) {
-        const r = await api<{ image: string }>("/scan/filter", { method: "POST", body: { image: src, mode } });
-        cache.current[mode][src] = r.image;
+        cache.current[mode][src] = await engine.current!.run(src, mode);
         bump((n) => n + 1);
       }
-    } catch {
-      Alert.alert("Filter failed", "Internet check karein aur dobara try karein.");
+    } catch (e) {
+      Alert.alert("Filter failed", (e as Error)?.message || "Dobara try karein.");
       setFilter("original");
     } finally {
       setFiltering(false);
@@ -158,6 +158,7 @@ export default function ScanToPdfScreen() {
           </>
         )}
       </ScrollView>
+      <ScanFilterEngine ref={engine} />
       <InstantOverlay visible={busy} title="Creating PDF…" subtitle="Just a moment." />
     </SafeAreaView>
   );

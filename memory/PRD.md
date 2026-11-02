@@ -1124,5 +1124,5 @@ Replaced the app-icon placeholder PNGs that `app.json` was shipping to the widge
 
 ## Scanner Filters (June 2026)
 - Scan Document screen: after scanning, choose Original / Black & White / Colour Boost (applies to all pages, preview thumbnails update, PDF uses filtered images).
-- Backend: POST /api/scan/filter {image(base64), mode: bw|boost} (auth required, Pillow+numpy). BW flattens uneven lighting + high contrast.
-- Native scanner requires Android build; filter endpoint agent-tested (200/400/401).
+- Filters run fully OFFLINE on-device: canvas code (src/utils/image/scanFilterScript.ts) executed in a hidden WebView (src/components/ScanFilterEngine.tsx); on web runs in page. BW flattens uneven lighting + high contrast. No backend endpoint.
+- Native scanner requires Android build.
