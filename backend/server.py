@@ -1544,6 +1544,8 @@ async def legal_page(slug: str):
     if name == "style.css":
         from fastapi.responses import Response
         return Response(_LEGAL_CSS, media_type="text/css")
+    if name in ("account-deletion", "data-deletion", "delete-account"):
+        return HTMLResponse(_read_static("account-deletion.html"))
     if name not in {"privacy", "terms", "refund", "shipping", "contact", "pricing"}:
         raise HTTPException(404, "Not found")
     with open(os.path.join(_LEGAL_DIR, f"{name}.html"), encoding="utf-8") as f:
