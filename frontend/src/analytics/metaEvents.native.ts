@@ -16,7 +16,15 @@ let initialized = false;
 export function initializeMetaEvents() {
   if (initialized || !fb) return;
   initialized = true;
-  try { fb.Settings.initializeSDK(); } catch {}
+  try {
+    fb.Settings.setAutoLogAppEventsEnabled(true);
+    fb.Settings.setAdvertiserIDCollectionEnabled(true);
+    fb.Settings.initializeSDK();
+    // iOS 14+: Meta needs this flag to attribute installs (Android ignores it).
+    fb.Settings.setAdvertiserTrackingEnabled?.(true);
+    // Make sure the activate/install ping is sent right away on first launch.
+    fb.AppEventsLogger.flush?.();
+  } catch {}
 }
 
 /** Logged once per user per device. */
