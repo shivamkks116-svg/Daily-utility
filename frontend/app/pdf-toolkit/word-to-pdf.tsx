@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 /**
  * Word → PDF tool. Pick a `.docx` / `.doc`, convert on the backend, open the
  * resulting PDF in the native Reader.
@@ -15,7 +16,7 @@ import { humanBytes } from "@/src/utils/pdf/helpers";
 import { addRecent } from "@/src/utils/toolkit/recents";
 import { Ionicons } from "@expo/vector-icons";
 
-export default function WordToPdfScreen() {
+function WordToPdfScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string }>();
   const [file, setFile] = useState<PickedDocx | null>(() =>
@@ -125,3 +126,5 @@ const styles = StyleSheet.create({
   fileName: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   fileMeta: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2 },
 });
+
+export default withPremiumGate(WordToPdfScreen, "Word → PDF");

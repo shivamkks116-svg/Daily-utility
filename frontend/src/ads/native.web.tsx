@@ -6,11 +6,12 @@
 import React from "react";
 
 export const adsAvailable = false;
-export const adUnitIds = { banner: undefined, interstitial: undefined, rewarded: undefined };
+export const adUnitIds = { banner: undefined, interstitial: undefined, rewarded: undefined, appOpen: undefined, native: undefined };
 
 export async function initAds() { return false; }
 export function AdStartup() { return null; }
 export function AdBanner(_props: any) { return null; }
+export function NativeAdRow(_props: any) { return null; }
 export async function showInterstitial(_isSubscribed = false) { return false; }
 export function useRewardedAd(_onEarned?: () => void) {
   return { loaded: false, available: false, show: () => {} };

@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Image, Alert, Pressable, ActivityIndicator, Dimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,7 +12,7 @@ import { pdfToImages } from "@/src/utils/pdf";
 import { addRecent } from "@/src/utils/toolkit/recents";
 
 /** PDF → Images (PNG / JPEG) — one file per page, sharable individually. */
-export default function PdfToImagesScreen() {
+function PdfToImagesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [file, setFile] = useState<PickedPdf | null>(null);
@@ -144,3 +145,5 @@ const styles = StyleSheet.create({
   gridBadgeText: { color: "#fff", fontSize: 10, fontWeight: fontWeight.bold },
   overlay: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.15)" },
 });
+
+export default withPremiumGate(PdfToImagesScreen, "PDF → Images");

@@ -11,9 +11,10 @@ import type { PickedPdf } from "@/src/utils/pdf/helpers";
 import { useSubscription } from "@/src/subscription/RevenueCat";
 import { getProgress } from "@/src/utils/pdf/bookmarks";
 import { AdBanner } from "@/src/ads/AdBanner";
+import { NativeAdRow } from "@/src/ads/native";
 
 // Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
-const PREMIUM_TOOLS = new Set(["compress", "protect", "sign", "fill-form", "watermark", "pagenums", "to-docx"]);
+const PREMIUM_TOOLS = new Set(["compress", "protect", "sign", "fill-form", "watermark", "pagenums", "to-docx", "to-images", "word-to-pdf", "excel-to-pdf"]);
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -201,8 +202,11 @@ export default function PdfToolkitHub() {
         {recents.length > 0 && !query ? (
           <View style={{ marginTop: spacing.md }}>
             <Text style={styles.sectionTitle}>🕘 Recent PDFs</Text>
-            {recents.map(r => (
-              <RecentRow key={r.id} r={r} onOpen={() => router.push({ pathname: "/pdf-toolkit/reader", params: { sharedUri: r.uri, sharedName: r.name, sharedSize: String(r.size || 0) } })} onDelete={async () => { await removeRecent(r.id); load(); }} />
+            {recents.map((r, i) => (
+              <React.Fragment key={r.id}>
+                <RecentRow r={r} onOpen={() => router.push({ pathname: "/pdf-toolkit/reader", params: { sharedUri: r.uri, sharedName: r.name, sharedSize: String(r.size || 0) } })} onDelete={async () => { await removeRecent(r.id); load(); }} />
+                {i === 1 || (recents.length < 2 && i === 0) ? <NativeAdRow testID="recents-native-ad" /> : null}
+              </React.Fragment>
             ))}
           </View>
         ) : null}

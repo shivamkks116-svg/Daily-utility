@@ -1,3 +1,4 @@
+import { withPremiumGate } from "@/src/components/PremiumToolGate";
 /**
  * Excel → PDF tool. Pick a .xlsx / .xls / .csv, convert on the backend
  * (every sheet as a table), then open the PDF in the Reader.
@@ -15,7 +16,7 @@ import { humanBytes } from "@/src/utils/pdf/helpers";
 import { addRecent } from "@/src/utils/toolkit/recents";
 import { SheetPreview } from "@/src/components/SheetPreview";
 
-export default function ExcelToPdfScreen() {
+function ExcelToPdfScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ sharedUri?: string; sharedName?: string; sharedSize?: string }>();
   const [file, setFile] = useState<PickedSheet | null>(() =>
@@ -102,3 +103,5 @@ const styles = StyleSheet.create({
   fileName: { color: colors.onSurface, fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   fileMeta: { color: colors.onSurfaceTertiary, fontSize: fontSize.xs, marginTop: 2 },
 });
+
+export default withPremiumGate(ExcelToPdfScreen, "Excel → PDF");

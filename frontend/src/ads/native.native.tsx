@@ -11,7 +11,8 @@
  * Falls back to no-op components on web / Expo Go so the app keeps working.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { AppState, Platform, View } from "react-native";
+import { AppState, Image, Platform, StyleSheet, Text, View } from "react-native";
+import { colors, fontSize, fontWeight, radius, spacing } from "@/src/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { useSubscription } from "@/src/subscription/RevenueCat";
@@ -37,6 +38,8 @@ const PROD_IDS = {
   banner: "ca-app-pub-3735972538807236/6750087582",
   interstitial: "ca-app-pub-3735972538807236/4123924246",
   rewarded: "ca-app-pub-3735972538807236/9376336646",
+  appOpen: "ca-app-pub-3735972538807236/7322091746",
+  native: "ca-app-pub-3735972538807236/5621997269",
 };
 const useTests = __DEV__ || process.env.EXPO_PUBLIC_ADMOB_USE_TEST_IDS === "true";
 
@@ -44,6 +47,8 @@ export const adUnitIds = {
   banner: useTests ? TestIds?.ADAPTIVE_BANNER : process.env.EXPO_PUBLIC_ADMOB_BANNER_ID || PROD_IDS.banner,
   interstitial: useTests ? TestIds?.INTERSTITIAL : process.env.EXPO_PUBLIC_ADMOB_INTERSTITIAL_ID || PROD_IDS.interstitial,
   rewarded: useTests ? TestIds?.REWARDED : process.env.EXPO_PUBLIC_ADMOB_REWARDED_ID || PROD_IDS.rewarded,
+  appOpen: useTests ? TestIds?.APP_OPEN : PROD_IDS.appOpen,
+  native: useTests ? TestIds?.NATIVE : PROD_IDS.native,
 };
 
 /* ------------------------------------------------------------------ */
@@ -106,21 +111,67 @@ export async function initAds(): Promise<boolean> {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*                              App Open                               */
+/* ------------------------------------------------------------------ */
+
+const APP_OPEN_AWAY_MS = 60 * 1000;      // only after 1+ min in background
+const APP_OPEN_COLD_WINDOW_MS = 8 * 1000; // cold start: show only if ready fast
+let _appOpen: any = null;
+let _appOpenLoaded = false;
+let _appOpenShowing = false;
+
+function loadAppOpen(onReady?: () => void) {
+  if (!admob || !adUnitIds.appOpen || _premium) return;
+  const { AppOpenAd, AdEventType } = admob;
+  if (!_appOpen) {
+    _appOpen = AppOpenAd.createForAdRequest(adUnitIds.appOpen);
+    _appOpen.addAdEventListener(AdEventType.CLOSED, () => {
+      _appOpenShowing = false;
+      _appOpenLoaded = false;
+      _lastShownAt = Date.now(); // keep an interstitial from following right away
+      try { _appOpen.load(); } catch {}
+    });
+    _appOpen.addAdEventListener(AdEventType.ERROR, () => { _appOpenLoaded = false; _appOpenShowing = false; });
+  }
+  const off = _appOpen.addAdEventListener(AdEventType.LOADED, () => {
+    _appOpenLoaded = true;
+    off?.();
+    onReady?.();
+  });
+  try { _appOpen.load(); } catch {}
+}
+
+function showAppOpen() {
+  if (_premium || !_appOpenLoaded || _appOpenShowing) return;
+  // Never stack on top of an interstitial / rewarded that just closed.
+  if (Date.now() - _lastShownAt < 30 * 1000) return;
+  try { _appOpenShowing = true; _appOpen.show(); } catch { _appOpenShowing = false; }
+}
+
 export function AdStartup() {
   const { isSubscribed } = useSubscription();
   _premium = !!isSubscribed;
   useEffect(() => {
-    void initAds();
+    void initAds().then((ok) => {
+      if (!ok) return;
+      // Cold start: show once if the ad is ready within a few seconds.
+      loadAppOpen(() => { if (Date.now() - _appStartAt < APP_OPEN_COLD_WINDOW_MS) showAppOpen(); });
+    });
     // Reset session counters when app comes back to foreground after a long
     // background period (>10 min).
     let lastBg = Date.now();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "background") lastBg = Date.now();
+      if (state === "background" && !_appOpenShowing) lastBg = Date.now();
       if (state === "active") {
         const away = Date.now() - lastBg;
         if (away > 10 * 60 * 1000) {
           _sessionShown = 0;
           _lastShownAt = 0;
+        }
+        if (away > APP_OPEN_AWAY_MS && !_appOpenShowing) {
+          if (_appOpenLoaded) showAppOpen();
+          else loadAppOpen();
         }
       }
     });
@@ -128,6 +179,76 @@ export function AdStartup() {
   }, []);
   return null;
 }
+
+/* ------------------------------------------------------------------ */
+/*                               Native                                */
+/* ------------------------------------------------------------------ */
+
+/** Native ad styled like a list row (used inside the Recent files list). */
+export function NativeAdRow({ testID }: { testID?: string }) {
+  const { isSubscribed } = useSubscription();
+  const [ad, setAd] = useState<any>(null);
+
+  useEffect(() => {
+    if (isSubscribed || !adsAvailable || !adUnitIds.native) return;
+    let alive = true;
+    let loaded: any = null;
+    admob.NativeAd.createForAdRequest(adUnitIds.native)
+      .then((a: any) => { loaded = a; if (alive) setAd(a); else a.destroy?.(); })
+      .catch(() => {});
+    return () => { alive = false; loaded?.destroy?.(); };
+  }, [isSubscribed]);
+
+  if (!ad || isSubscribed) return null;
+  const { NativeAdView, NativeAsset, NativeAssetType } = admob;
+  return (
+    <NativeAdView nativeAd={ad} style={nStyles.row} testID={testID}>
+      {ad.icon?.url ? (
+        <NativeAsset assetType={NativeAssetType.ICON}>
+          <Image source={{ uri: ad.icon.url }} style={nStyles.icon} />
+        </NativeAsset>
+      ) : (
+        <View style={[nStyles.icon, { backgroundColor: colors.surfaceSecondary }]} />
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={nStyles.badge}>Ad</Text>
+          <NativeAsset assetType={NativeAssetType.HEADLINE}>
+            <Text style={nStyles.title} numberOfLines={1}>{ad.headline}</Text>
+          </NativeAsset>
+        </View>
+        {ad.body ? (
+          <NativeAsset assetType={NativeAssetType.BODY}>
+            <Text style={nStyles.body} numberOfLines={1}>{ad.body}</Text>
+          </NativeAsset>
+        ) : null}
+      </View>
+      {ad.callToAction ? (
+        <NativeAsset assetType={NativeAssetType.CALL_TO_ACTION}>
+          <Text style={nStyles.cta}>{ad.callToAction}</Text>
+        </NativeAsset>
+      ) : null}
+    </NativeAdView>
+  );
+}
+
+const nStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.sm,
+    borderRadius: radius.md, backgroundColor: colors.surfaceSecondary, marginBottom: spacing.sm, minHeight: 56,
+  },
+  icon: { width: 40, height: 40, borderRadius: radius.sm },
+  badge: {
+    fontSize: 10, fontWeight: fontWeight.bold, color: colors.onBrandPrimary, backgroundColor: colors.brandPrimary,
+    paddingHorizontal: 4, borderRadius: 3, overflow: "hidden",
+  },
+  title: { flexShrink: 1, color: colors.onSurface, fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
+  body: { color: colors.onSurfaceSecondary, fontSize: fontSize.xs, marginTop: 2 },
+  cta: {
+    color: colors.onBrandPrimary, backgroundColor: colors.brandPrimary, fontSize: fontSize.xs, fontWeight: fontWeight.bold,
+    paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radius.sm, overflow: "hidden",
+  },
+});
 
 /* ------------------------------------------------------------------ */
 /*                              Banner                                 */
