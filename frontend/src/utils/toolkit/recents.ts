@@ -4,6 +4,7 @@
  */
 import { storage } from "@/src/utils/storage";
 import { logToolUsed } from "@/src/analytics/metaEvents";
+import { maybeShowInterstitial } from "@/src/ads/interstitial";
 
 const KEY = "dailyhub_toolkit_recents_v1";
 const MAX = 25;
@@ -31,7 +32,11 @@ export async function listRecents(): Promise<RecentEntry[]> {
 }
 
 export async function addRecent(entry: Omit<RecentEntry, "id" | "createdAt"> & Partial<Pick<RecentEntry, "id" | "createdAt">>): Promise<void> {
-  if (entry.tool) logToolUsed(entry.tool);
+  if (entry.tool) {
+    logToolUsed(entry.tool);
+    // Natural break: a tool just finished → good moment for an interstitial.
+    maybeShowInterstitial("tool-done");
+  }
   const now = Date.now();
   const item: RecentEntry = {
     id: entry.id || `rec_${now}_${Math.random().toString(36).slice(2, 8)}`,

@@ -2,10 +2,10 @@
  * Native-safe AdMob adapter with production-grade placement rules:
  *
  *   • Ads are automatically HIDDEN when the user is subscribed (Premium).
- *   • Interstitial cooldown: 120s between shows.
- *   • Session cap: max 4 interstitials per app session.
- *   • Cold-start grace: no interstitials for first 45s after app open.
- *   • First-open grace: no interstitials on the user's very first day.
+ *   • Interstitial cooldown: 60s between shows.
+ *   • Session cap: max 8 interstitials per app session.
+ *   • Cold-start grace: no interstitials for first 20s after app open.
+ *   • First-open grace: no interstitials in the first 30 min after install.
  *   • Robust preload with backoff on error.
  *
  * Falls back to no-op components on web / Expo Go so the app keeps working.
@@ -51,12 +51,13 @@ export const adUnitIds = {
 /* ------------------------------------------------------------------ */
 
 const APP_INSTALL_KEY = "@ads/install-ts";
-const INTERSTITIAL_COOLDOWN_MS = 120 * 1000; // 2 min between shows
-const SESSION_INTERSTITIAL_CAP = 4;          // per app session
-const COLD_START_GRACE_MS = 45 * 1000;       // first 45s after app open
-const FIRST_DAY_GRACE_MS = 24 * 60 * 60 * 1000; // 1st 24h after install
+const INTERSTITIAL_COOLDOWN_MS = 60 * 1000; // 1 min between shows
+const SESSION_INTERSTITIAL_CAP = 8;          // per app session
+const COLD_START_GRACE_MS = 20 * 1000;       // first 20s after app open
+const FIRST_DAY_GRACE_MS = 30 * 60 * 1000;   // first 30 min after install
 
 const _appStartAt = Date.now();
+let _premium = false; // kept in sync by <AdStartup/>
 let _sessionShown = 0;
 let _lastShownAt = 0;
 let _installedAt: number | null = null;
@@ -106,6 +107,8 @@ export async function initAds(): Promise<boolean> {
 }
 
 export function AdStartup() {
+  const { isSubscribed } = useSubscription();
+  _premium = !!isSubscribed;
   useEffect(() => {
     void initAds();
     // Reset session counters when app comes back to foreground after a long
@@ -179,7 +182,7 @@ function ensureInterstitial() {
 }
 
 async function shouldSuppressInterstitial(isSubscribed: boolean): Promise<{ ok: boolean; reason?: string }> {
-  if (isSubscribed || !adsAvailable) return { ok: false, reason: "subscribed_or_unavailable" };
+  if (isSubscribed || _premium || !adsAvailable) return { ok: false, reason: "subscribed_or_unavailable" };
 
   // Session cap
   if (_sessionShown >= SESSION_INTERSTITIAL_CAP) return { ok: false, reason: "session_cap" };

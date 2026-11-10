@@ -7,6 +7,7 @@ import { colors, fontSize, fontWeight, spacing } from "@/src/theme";
 import { ToolkitHeader, ToolCard, EmptyState } from "@/src/components/toolkit/Primitives";
 import { listFavorites, toggleFavorite } from "@/src/utils/toolkit/recents";
 import { useSubscription } from "@/src/subscription/RevenueCat";
+import { AdBanner } from "@/src/ads/AdBanner";
 
 // Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
 const PREMIUM_TOOLS = new Set(["img-watermark", "img-describe"]);
@@ -104,6 +105,7 @@ export default function ImageToolkitHub() {
             </View>
           </View>
         ))}
+        <AdBanner testID="image-toolkit-banner" />
       </ScrollView>
     </SafeAreaView>
   );

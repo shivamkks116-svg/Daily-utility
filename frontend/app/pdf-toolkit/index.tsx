@@ -10,6 +10,7 @@ import { PdfUrlImportModal } from "@/src/components/PdfUrlImportModal";
 import type { PickedPdf } from "@/src/utils/pdf/helpers";
 import { useSubscription } from "@/src/subscription/RevenueCat";
 import { getProgress } from "@/src/utils/pdf/bookmarks";
+import { AdBanner } from "@/src/ads/AdBanner";
 
 // Tools unlocked per-use via a rewarded ad (see PremiumToolGate).
 const PREMIUM_TOOLS = new Set(["compress", "protect", "sign", "fill-form", "watermark", "pagenums", "to-docx"]);
@@ -230,6 +231,7 @@ export default function PdfToolkitHub() {
             </View>
           </View>
         ))}
+        <AdBanner testID="pdf-toolkit-banner" />
       </ScrollView>
       <PdfUrlImportModal
         visible={urlModalOpen}

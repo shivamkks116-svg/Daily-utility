@@ -7,8 +7,8 @@ export function preloadInterstitial() { /* loaded lazily inside native.tsx */ }
 /**
  * Show an interstitial at a natural transition. Returns silently — never
  * throws — so call sites don't need try/catch.
- *   trigger: "tool-launch" | "pdf-close" | "manual"
+ *   trigger: "tool-launch" | "pdf-close" | "tool-done" | "manual"
  */
-export function maybeShowInterstitial(_trigger?: "tool-launch" | "pdf-close" | "manual") {
+export function maybeShowInterstitial(_trigger?: "tool-launch" | "pdf-close" | "tool-done" | "manual") {
   void showInterstitial(false);
 }
